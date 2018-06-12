@@ -1,0 +1,181 @@
+﻿<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8'>
+    <title>Final Project - cars</title>
+    <script type='text/javascript' src='https://d3js.org/d3.v3.min.js'></script>
+
+    <script src="" charset="utf-8"></script> 
+    <link href="FP_cars.css" rel="stylesheet" type='text/css' />
+</head>
+<body>
+    <script type='text/javascript'>
+
+        var xAxis, yAxis;
+        var data_spark, data_h2o;
+        var loaded = 0;
+        var width = 1150, height = 555,
+                margin = { top: 20, right: 20, bottom: 20, left: 70 };
+        //uncomment below for scaled-down version, easier to work with on smaller screen
+        //width = 750; height = 400;
+        var svg = d3.select('body').append('svg')
+            .attr('width', width + margin.right + margin.left)
+            .attr('height', height + margin.top + margin.bottom)
+            .attr('class', 'frame');
+
+        //horizontal/Displacement scale
+        var xMin = 50, xMax = 500;
+        var xScale = d3.scale.linear()
+            .domain([xMin, xMax])
+            .range([50, width]);
+
+        var yScale = d3.scale.linear()
+           .domain([25, 250])
+           .range([height, 40])
+
+        d3.csv('spark_car.csv', function (d) {
+            return d;
+        }, function (data) {
+            data_spark = data;
+            drawStuff();
+        });
+
+        d3.csv('car_SIMPLE.csv', function (d) {
+            //normalize data row column names to match those used in Lecture 11
+             var row = {
+                 displacement: d.Displacement,
+                 actual: d.Horsepower,
+                 predicted: d.predict
+             }
+            return row;
+        }, function (data) {
+            data_h2o = data;
+            drawStuff();
+        });
+
+        function drawStuff() {
+            loaded += 1;
+            console.log(loaded);
+            if (loaded < 2) {
+
+                xAxis = d3.svg.axis().scale(xScale).orient('bottom')
+                       .tickValues([100, 200, 300, 400, 500]);
+
+                yAxis = d3.svg.axis().scale(yScale).orient('left')
+                       .tickValues([50, 100, 150, 200, 250]);
+
+                svg.append("text").attr("x", 25).attr("y", 30)
+                    .text("Horsepower").attr('class', 'axis-label');
+                svg.append("text").attr("x", 45).attr("y", height + 35)
+                    .text("Displacement").attr('class', 'axis-label');
+
+                //legend
+                svg.append("rect").attr("x", 80).attr("y", 80)
+                    .attr("height", 75).attr("width", 150).attr('class', 'legend');
+                svg.append("text").attr("x", 100).attr("y", 100)
+                    .text("Actual").attr('class', 'axis-label');
+                svg.append("text").attr("x", 100).attr("y", 120)
+                    .text("Predicted MLlib").attr('class', 'axis-label');
+                svg.append("text").attr("x", 100).attr("y", 140)
+                    .text("Predicted H2O").attr('class', 'axis-label');
+                svg.append("circle").attr("cx", 90).attr("cy", 95)
+                    .attr('r', 5).attr('class', 'actual');
+                svg.append("circle").attr("cx", 90).attr("cy", 115)
+                    .attr('r', 5).attr('class', 'predicted');
+                svg.append("circle").attr("cx", 90).attr("cy", 135)
+                    .attr('r', 5).attr('class', 'predicted2');
+
+            }
+            else {
+
+                console.log('loaded 2x');
+                var dot_actual = svg.selectAll('circle-actual')
+                    .data(data_spark).enter().append('circle')
+                    .attr('class', function (d) {
+                        return 'actual';
+                    });
+
+                dot_actual.attr('cx', function (d) {
+                    return xScale(d.displacement);
+                })
+                 .attr('cy', function (d) {
+                     return yScale(d.actual);
+                 })
+                 .attr('r', function (d) {
+                     return 5;
+                 })
+                .append('title')
+                .text(function (d) {
+                    return Math.round(d.displacement) + ' Displacement, actual HP: ' + Math.round(d.actual);
+                });
+
+                var dot_pred_spark = svg.selectAll('circle-predicted')
+                    .data(data_spark).enter().append('circle')
+                    .attr('class', function (d) {
+                        return 'predicted';
+                    });
+
+                dot_pred_spark.attr('cx', function (d) {
+                    return xScale(d.displacement);
+                })
+                 .attr('cy', function (d) {
+                     return yScale(d.predicted);
+                 })
+                 .attr('r', function (d) {
+                     return 5;
+                 })
+                .append('title')
+                .text(function (d) {
+                    return 'MLlib: ' + Math.round(d.displacement) + ' Displacement, Predicted hp: ' + Math.round(d.predicted);
+                });
+
+                var dot_pred_h2o = svg.selectAll('circle-predicted')
+                .data(data_h2o).enter().append('circle')
+                .attr('class', function (d) {
+                    return 'predicted2';
+                });
+
+                dot_pred_h2o.attr('cx', function (d) {
+                    return xScale(d.displacement);
+                })
+                 .attr('cy', function (d) {
+                     return yScale(d.predicted);
+                 })
+                 .attr('r', function (d) {
+                     return 5;
+                 })
+                .append('title')
+                .text(function (d) {
+                    return 'H2O: ' + Math.round(d.displacement) + ' displacement, predicted hp: ' + Math.round(d.predicted);
+                });
+
+                //some quick & dirty algebra gave me a slope = 0.49
+                //linear_model.weights = [0.491718981427]
+                var spark_model_weights = 0.491718981427;
+                svg.append("line").attr("x1", xScale(xMin)).attr("y1", yScale(xMin * spark_model_weights))
+                    .attr("x2", xScale(xMax)).attr("y2", yScale(xMax * spark_model_weights))
+                    .attr('class', 'model_spark');
+
+                var h2o_disp_coeff = 0.3686;  //0.3686 = Displacement coefficient for model, reported by Flow in H20
+                var h2o_intercept = 35.1316; //reported as Intercept in Flow
+                svg.append("line").attr("x1", xScale(xMin)).attr("y1", yScale(xMin * h2o_disp_coeff + h2o_intercept))
+                    .attr("x2", xScale(xMax)).attr("y2", yScale(xMax * h2o_disp_coeff + h2o_intercept))
+                    .attr('class', 'model_h2o');
+            }
+
+            //keep these at end
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(0,' + height + ')')
+                .call(xAxis);
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(50,0)')
+                .call(yAxis);
+        };
+
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,543 @@
+---
+title: "CSCI E-63C Week 9 assignment"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(boot)
+library(MASS)
+library(class)
+library(ggplot2)
+library(e1071)
+library(reshape2)
+library(ggcorrplot)
+knitr::opts_chunk$set(echo = TRUE)
+
+# suppress glm.fit warnings
+options(warn=-1)
+#options(warn=0)
+```
+
+# Preface
+
+For this assignment we will use banknote authentication data (the one we worked with in week 2 assignment) to fit logistics regression model and evaluate performance of LDA, QDA and KNN classifiers.  As we have seen earlier this dataset should allow to predict fairly well which banknotes are authentic and which ones are forged, so we should expect to see low error rates for our classifiers.  Let's see whether some of those tools perform better than others on this data.
+
+# Problem 1 (10 points): logistic regression
+
+Fit logistic regression model of the class attribute using remaining four attributes as predictors in the model.  Produce summary of the model, describe which attributes appear to be significantly associated with the categorical outcome in this model.  Use this model to make predictions on the entire dataset and compare these predictions and corresponding true values of the class attribute using confusion matrix (i.e. contingency table).  Calculate error rate (would this be training or test error in this case?), sensitivity and specificity (assuming that we are predicting class "1").  Describe the results.
+
+---
+
+> Fit logistic regression model of the class attribute using remaining four attributes as predictors in the model.  Produce summary of the model, describe which attributes appear to be significantly associated with the categorical outcome in this model.  
+
+### dataset
+per http://archive.ics.uci.edu/ml/datasets/banknote+authentication:  
+
+Attribute Information:  
+1. variance of Wavelet Transformed image (continuous)  
+2. skewness of Wavelet Transformed image (continuous)  
+3. curtosis of Wavelet Transformed image (continuous)  
+4. entropy of image (continuous)  
+5. class (integer)   
+
+Load the dataset in and do a quick overview of contents:  
+
+```{r }
+data = read.table('./data/data_banknote_authentication.txt', sep=',')
+# * name appropriately data set attributes
+columns = c('variance','skewness','curtosis','entropy','y_class')
+colnames(data) = columns
+str(data)
+summary(data)
+```
+
+Ratio of `y_class`= 1 to `y_class` = 0: `r mean(data$y_class)`
+
+Fit the model and output the `summary`
+
+```{r }
+glm_fit = glm(y_class~., data=data, family=binomial)
+summary(glm_fit)
+```
+
+Per the `summary` results, `variance`, `skewness`, `curtosis` all appear to be highly significant and negatively correlated to the outcome variable. The fourth predictor, `entropy`, appears to be statistically insignificant an has a relatively high `p-value` (though at the same time it is only a bit above 0.05, a traditional benchmark). 
+
+> Use this model to make predictions on the entire dataset and compare these predictions and corresponding true values of the class attribute using confusion matrix (i.e. contingency table).  
+
+The question formulation implies the model will be trained (and evaluated) on the entire dataset. Looking ahead, **Problem 2** and **Problem 3** both specify using "entire dataset" to fit various models, and both problems only mention the reporting of "training" error rates, i.e. there aren't going to be test error rates available. Because of above factors + since resampling is specified in *Problem 4*, I'm going to use the full dataset.  
+*UPDATE: Having now completed problems 1,2, and 3, this train+test on the full dataset instead of at least splitting into train and test sets still doesn't feel right but I assume that is the point of this homework, to see what happens when you train on the full dataset*  
+
+Generate the confusion matrix
+
+```{r }
+glm_predict = predict(glm_fit, newdata=data, type='response')
+y_class_predict = ifelse(glm_predict > 0.5, 1, 0)
+logreg_table = table(y_class_predict, data$y_class)
+logreg_table
+```
+
+There will be further details below but we can see that the vast majority of observations were correctly classified as either 0 or 1, with only a handful of False Positives and False Negatives.  
+
+> Calculate error rate (would this be training or test error in this case?), sensitivity and specificity (assuming that we are predicting class "1").  
+
+First create a generic `assess_prediction` function based on code from the lecture and display results for logistic regression model.
+
+```{r }
+assess_prediction = function(truth, predicted, print_results=FALSE) {
+  # check for missing values (we are going to
+  # compute metrics on non-missing values only)
+  predicted = predicted[ ! is.na(truth) ]
+  truth = truth[ ! is.na(truth) ]
+  truth = truth[ ! is.na(predicted) ]
+  predicted = predicted[ ! is.na(predicted) ]
+  
+  NotNa=length(truth)
+  # how predictions align against known
+  # training/testing outcomes:
+  # TP/FP= true/false positives,
+  # TN/FN=true/false negatives
+  TP = sum(truth==1 & predicted==1)
+  TN = sum(truth==0 & predicted==0)
+  FP = sum(truth==0 & predicted==1)
+  FN = sum(truth==1 & predicted==0)
+  P = TP+FN # total number of positives in the truth data
+  N = FP+TN # total number of negatives
+  accuracy_pct = signif(sum(truth==predicted)*100/length(truth),3)
+  error_rate_pct = 100-accuracy_pct
+  sensitivity_pct = signif(100*TP/P,3)
+  specificity_pct = signif(100*TN/N,3)
+  precision_pct = signif(100*TP/(TP+FP),3)
+  false_discovery_pct = signif(100*FP/(TP+FP),3)
+  false_positive_rate_pct = signif(100*FP/N,3)
+  
+  if (print_results){
+    cat("Total cases that are not NA: ",
+    NotNa,"\n",sep="")
+    # overall accuracy of the test: how many cases
+    # (both positive and negative) we got right:
+    cat("Correct predictions (accuracy): ",
+      sum(truth==predicted),
+      "(",accuracy_pct,"%)\n",sep="")
+    cat("TPR (sensitivity)=TP/P: ", sensitivity_pct, "%\n", sep="")
+    cat("TNR (specificity)=TN/N: ", specificity_pct, "%\n", sep="")
+    cat("PPV (precision)=TP/(TP+FP): ", precision_pct, "%\n", sep="")
+    cat("FDR (false discovery)=1-PPV: ", false_discovery_pct, "%\n", sep="")
+    cat("FPR =FP/N=1-TNR: ", false_positive_rate_pct, "%\n", sep="")
+    
+    print('TP  TN  FP  FN')
+    print(paste0(TP, ' ', TN, ' ', FP, ' ', FN))
+  }
+  
+  return (list(NotNA=length(truth),
+              accuracy_pct=accuracy_pct,
+              error_rate_pct=error_rate_pct,
+              sensitivity_pct=sensitivity_pct,
+              specificity_pct=specificity_pct,
+              precision_pct=precision_pct,
+              false_discovery_pct=false_discovery_pct,
+              false_positive_rate_pct=false_positive_rate_pct))
+}
+
+logreg_results = assess_prediction(data$y_class, y_class_predict, print_results=TRUE)
+
+```
+
+The overall error rate, converted to percentage, is `r 100-logreg_results$accuracy_pct`%; since the model was trained on the same (full) dataset on which it was used this should be considered a **training** error rate. Similar values for sensitivity and specificity are `r logreg_results$sensitivity_pct`% and `r logreg_results$specificity_pct`% respectively. 
+
+> Describe the results.
+
+For predictions made on 1,372 observations,  
+True Negative, i.e. genuine banknotes correctly identified as genuine: `r logreg_table[1]`  
+True Positive, counterfeit banknotes correctly identified as counterfeit: `r logreg_table[4]`  
+False Negative, actual counterfeits registered as genuine: `r logreg_table[3]`  
+False Positive, genuine banknotes registered as counterfeit: `r logreg_table[2]`  
+
+For a naive interpretation of results, the accuracy is very high - `r logreg_table[1]` + `r logreg_table[4]` of total `r sum(logreg_table)` were guessed correctly, with a handful incorrectly predicted in each "direction", either false positives or true negatives.  
+Even if we add some domain analysis to the results, the accuracy is striking. The model could be weighted to favor discovering counterfeits at the expense of including some genuine banknotes in the the is-counterfeit bucket, with the idea that further analysis (costing more money/resources) could be done upon these to pull out the false positives. But even that would improve results marginally, since only `r logreg_table[3]` counterfeit banknotes were missed.  
+
+Here is an attempt anyway, lower the is-counterfeit threshold to 0.1, anything with a likelihood of being counterfeit > 10% will be counted as counterfeit. Only one true counterfeit is missed, at the expense of incorrectly classifying 16 as being counterfeit:
+```{r }
+y_class_predict2 = ifelse(glm_predict > 0.1, 1, 0)
+table(y_class_predict2, data$y_class)
+
+logreg_results = assess_prediction(data$y_class, y_class_predict2, print_results=TRUE)
+
+```
+
+The bigger problem is that the logistic regression model was run on the full dataset, so any accuracy figures will be well inflated vs. what might occur in a more reasonable test/train split of data (or other sampling method).  
+
+As an aside, the rate of counterfeit-to-genuine is much more evenly split in this dataset vs. what one would expect to find in the real world.  
+
+
+# Problem 2 (10 points): LDA and QDA
+
+Using LDA and QDA implementations available in the package `MASS`, fit LDA and QDA classifiers on the entire dataset and calculate confusion matrix, (training) error rate, sensitivity and specificity for each of them.  Compare them to those of logistic regression.  Describe the results.
+
+---
+
+> Using LDA and QDA implementations available in the package `MASS`, fit LDA and QDA classifiers on the entire dataset and calculate confusion matrix, (training) error rate, sensitivity and specificity for each of them.  
+
+```{r }
+lda_fit = lda(y_class~., data=data)
+qda_fit = qda(y_class~., data=data)
+```
+
+
+LDA confusion matrix and accuracy assessments:
+
+```{r }
+y_class_predict_lda = predict(lda_fit)$class
+lda_table = table(y_class_predict_lda, data$y_class)
+lda_table
+
+lda_results = assess_prediction(data$y_class, y_class_predict_lda, print_results=TRUE)
+```
+
+LDA, values re the measures mentioned in problem  
+
+* training error rate as a percentage: `r 100-lda_results$accuracy_pct`%  
+* sensitivity: `r lda_results$sensitivity_pct`%  
+* specificity: `r lda_results$specificity_pct`%  
+
+
+```{r }
+y_class_predict_qda = predict(qda_fit)$class
+qda_table = table(y_class_predict_qda, data$y_class)
+qda_table
+qda_results = assess_prediction(data$y_class, y_class_predict_qda, print_results=TRUE)
+```
+
+
+QDA, values re the measures mentioned in problem  
+
+* training error rate as a percentage: `r 100-qda_results$accuracy_pct`%  
+* sensitivity: `r qda_results$sensitivity_pct`%  
+* specificity: `r qda_results$specificity_pct`%  
+
+> Compare them to those of logistic regression.  
+
+<table style="width:100%">
+<tr><th>LogReg</th><th>LDA</th><th>QDA</th></tr>
+<tr>
+  <td>
+```{r }
+logreg_table
+```
+  </td>
+  <td>
+```{r }
+lda_table
+```
+  </td>
+  <td>
+```{r }
+qda_table
+```
+  </td>
+</tr>
+<tr>
+  <td>
+```{r }
+logreg_results$accuracy_pct
+logreg_results$sensitivity_pct
+logreg_results$specificity_pct
+```
+  </td>
+  <td>
+```{r }
+lda_results$accuracy_pct
+lda_results$sensitivity_pct
+lda_results$specificity_pct
+```
+  </td>
+  <td>
+```{r }
+qda_results$accuracy_pct
+qda_results$sensitivity_pct
+qda_results$specificity_pct
+```
+  </td>
+  </tr>
+</table>
+
+Logistic regresion had a few false positives and about the same number of false negatives. Both LDS and QDA had zero false negatives, i.e. every instance of a conterfeit banknote was captured. On the other hand both had a higher number, vs. logistic regression at 50% cutoff, of false positives. Given domain knowledge discussed earlier this might very be a desireable tradeoff (pull out of circulation for deeper analysis etc.). Between LDA and QDA though the former had (relatively) many more FP.  
+
+Absolute accuracy levels are high across the board, logistic regression being the leader, followed by QDA and then LDA. Of course accuracy alone might not be the best measure of goodness of fit, need to discount cost of FP vs. FN since they exist across all three models.  
+Sensitivity is very high for logistic regression but actually 100% for LDA and QDA, where we are correctly capturing all counterfeit banknotes.
+In terms of specificity measurements logistic regression is highest, followed closesly by QDA, with LDA bringing up the rear at a noticeably lower level (but still quite high in absolute terms) - following along with the number of false positives reported for each model.  
+
+
+> Describe the results.  
+
+The comparison above included an overall description of LDA and QDA results. To elaborate further, QDA appears to be superior vs. LDA on this dataset insofar as accuracy is higher and number of false positives is lower, with both reporting zero false negatives. But since the models were fitted on the full dataset these summary results should be taken with a grain of salt. QDA is able to generate a more flexible and "wiggly" model that captures this particular dataset very well but it is likely that much overfitting is taking place. Results generated in *Problem 4* would be expected to illustrate this divergence, though QDA could certainly still win the model contest. The main point is that these training measures (accuracy, sensitivity, etc.) aren't that indicative of any kind of expected real world results.
+
+# Problem 3 (10 points): KNN
+
+Using `knn` from library `class`, fit KNN classifiers for the entire dataset and calculate confusion matrix, (training) error rate, sensitivity/specificity for  $k=1$, $5$ and $25$ nearest neighbors models.  Compare them to the corresponding results from LDA, QDA and logistic regression. Describe results of this comparison and discuss whether it is surprising to see low *training* error for KNN classifier with $k=1$.
+
+---
+
+> Using `knn` from library `class`, fit KNN classifiers for the entire dataset and calculate confusion matrix, (training) error rate, sensitivity/specificity for  $k=1$, $5$ and $25$ nearest neighbors models. 
+
+My best guess is that feeding the full dataset in as both `train` and `test` args will create a result equivalent to "fit KNN classifiers for the entire dataset". I'll train each of the models ($k=1/5/25$) first and store the results of `assess_prediction` function, while also allowing that function to print out calculation of results as they happen.
+
+```{r }
+y_class_predict_knn1 = knn(train=data, test=data, k=1, cl=data$y_class) #, prob=TRUE)
+knn1_table = table(y_class_predict_knn1, data$y_class)
+cat('\n','knn=1','\n')
+knn1_results = assess_prediction(data$y_class, y_class_predict_knn1, print_results=TRUE)
+
+y_class_predict_knn5 = knn(train=data, test=data, k=5, cl=data$y_class) #, prob=TRUE)
+knn5_table = table(y_class_predict_knn5, data$y_class)
+cat('\n','knn=5','\n')
+knn5_results = assess_prediction(data$y_class, y_class_predict_knn5, print_results=TRUE)
+
+y_class_predict_knn25 = knn(train=data, test=data, k=25, cl=data$y_class) #, prob=TRUE)
+knn25_table = table(y_class_predict_knn25, data$y_class)
+cat('\n','knn=25','\n')
+knn25_results = assess_prediction(data$y_class, y_class_predict_knn25, print_results=TRUE)
+
+```
+
+
+> Compare them to the corresponding results from LDA, QDA and logistic regression. Describe results of this comparison and discuss whether it is surprising to see low *training* error for KNN classifier with $k=1$.
+
+
+<table style="width:100%">
+<tr><th>knn=1</th><th>knn=5</th><th>knn=25</th></tr>
+<tr>
+  <td>
+```{r }
+knn1_table
+```
+  </td>
+  <td>
+```{r }
+knn5_table
+```
+  </td>
+  <td>
+```{r }
+knn25_table
+```
+  </td>
+</tr>
+<tr>
+  <td>
+```{r }
+knn1_results$accuracy_pct
+knn1_results$error_rate_pct
+knn1_results$sensitivity_pct
+knn1_results$specificity_pct
+```
+  </td>
+  <td>
+```{r }
+knn5_results$accuracy_pct
+knn5_results$error_rate_pct
+knn5_results$sensitivity_pct
+knn5_results$specificity_pct
+```
+  </td>
+  <td>
+```{r }
+knn25_results$accuracy_pct
+knn25_results$error_rate_pct
+knn25_results$sensitivity_pct
+knn25_results$specificity_pct
+```
+  </td>
+  </tr>
+</table>
+
+
+The results for k=1 and k=5 are the same, with no FP or FN and 100% accuracy/sensitivity/specificity, obviously higher than any measures generated in logistic regression or QDA or LDA. Corresponding error rate of course would be 0%. With k=25 there is a slight drop in some of the predictions, with 10 false positives (10 observations marked as counterfeit even though they are genuine) and a corresponding drop in accuracy and specificity.  
+With k=1 on the entire dataset I would expect to see the results that were obtained - at that point we are telling the model to put each observation into its own cluster, and given the full dataset = train, an accuracy of 100%/0% error rate would be unsurprising - each point in space has already been classified per its `y_class` value. If such a high-bias/low-variance model were then used on the test set of data I would expect rather poor results.
+
+
+# Problem 4 (30 points): compare test errors of logistic regression, LDA, QDA and KNN
+
+Using resampling approach of your choice (e.g. cross-validation, bootstrap, etc.) obtain test error as well as sensitivity and specificity for each of these methods (logistic regression, LDA, QDA, KNN with $k=1,2,5,11,21,51,101$).  Present results in the form of boxplots, compare test error/sensitivity/specificity across these methods and discuss their relative performance.
+
+---
+
+> Using resampling approach of your choice (e.g. cross-validation, bootstrap, etc.) obtain test error as well as sensitivity and specificity for each of these methods (logistic regression, LDA, QDA, KNN with $k=1,2,5,11,21,51,101$).  
+
+Create function to perform K-fold cross-validation on each of the described methods (+ Naive Bayes, for **Problem 5**) and then run at 10-fold and stuff all of the results into `df_out`
+
+```{r }
+
+
+xvalBanknotes = function(data, nTries=20, kXval=5) {
+  retRes = NULL
+  set.seed(63)
+  for ( iTry in 1:nTries ) {
+    # assign each observation to one of the kXval folds
+    xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+    k_models = paste0('knn', c(1,2,5,11,21,51,101))
+    for ( jSelect in c('logreg', 'lda', 'qda', k_models, 'nb') ) {
+#    for ( jSelect in c('logreg') ) {
+      measures <- NULL
+      for ( kFold in 1:kXval ) {
+        train = data[xvalFolds!=kFold,]
+        test = data[xvalFolds==kFold,]
+        # look at first few characters of jSelect to determine method to use
+        switch (substr(jSelect, 1, 3),
+          'log' = {
+            # fit on the kept-folds
+            glm_fit = glm(y_class~., data=train, family=binomial)
+            # predict on the held-out fold
+            glm_predict = predict(glm_fit, newdata=test, type='response')
+            test_predict = ifelse(glm_predict > 0.5, 1, 0)
+          },
+          'lda' = {
+            lda_fit = lda(y_class~., data=train)
+            test_predict = predict(lda_fit, newdata=test)$class
+          },
+          'qda' = {
+            qda_fit = qda(y_class~., data=train)
+            test_predict = predict(qda_fit, newdata=test)$class
+          },
+          'knn' = {
+            knn_num = as.numeric(substring(jSelect, 4, 6))
+            test_predict = knn(train=train, test=test, k=knn_num, cl=train$y_class)
+          },
+          'nb' = {
+            nb_fit = naiveBayes(as.factor(y_class)~., data=train)
+            test_predict = predict(nb_fit, newdata=test, type='class')
+          }
+        )
+        test_assessment_measures = assess_prediction(test$y_class, 
+                                                     test_predict, 
+                                                     print_results=FALSE)
+        
+        # accumulate test measurements over all cross-validation folds:
+        measures = rbind(measures, cbind(test_assessment_measures$error_rate_pct,
+                                                 test_assessment_measures$sensitivity_pct,
+                                                 test_assessment_measures$specificity_pct))
+      }
+      
+      #print(measures)
+      measure_means = colMeans(measures)
+      #print(measure_means)
+      retRes = rbind(retRes,
+                      data.frame(sim=iTry, model=jSelect, 
+                                 error_rate_pct=measure_means[1],
+                                 sensitivity_pct=measure_means[2],
+                                 specificity_pct=measure_means[3]))
+    }
+  }
+  retRes
+}
+
+number_of_folds = 10
+df_out = xvalBanknotes(data, kXval=number_of_folds)
+#df_out
+
+```
+
+> Present results in the form of boxplots, compare test error/sensitivity/specificity across these methods and discuss their relative performance.
+
+Individual plots for each measurement (y-axis), methods are on the x-axis:  
+* `logreg`: Logistic Regregression  
+* `lda`: Linear Discriminant Analysis  
+* `qda`: Quadratic Discriminant Analysis  
+* `knn#`: multiple K Nearest Neighbors at various levels of $K$  
+* `nb`: Naive Bayes  
+
+
+## Test error
+```{r fig.width=9, fig.height=6, echo=FALSE}
+p = ggplot(df_out, aes(x=factor(model), y=error_rate_pct, colour=model)) + geom_boxplot() 
+title = sprintf('Error rate across methods, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("Method") + ylab("Error Rate %")
+```
+
+Lowest error rates are for KNN methods with a relatively low levels of $K$, i.e. from 1 through 11. The next lowest error rates still belong to KNN, albeit at higher levels of $K$ (21, 51). Next lowest are Logistic Regression, followed by QDA. LDA and KNN at $K$=101 are about the same, but then the Naive Bayes returns a distinctly higher error level, over 5x the next lowest methods.  
+The low error rates of those low-$K$ KNN models implies the data has a complex non-linear relationship. At the same time one would expect in such a scenario that QDA would prove superior to both LDA and Logistic Regression and that is not entirely the case. QDA has lower rate than LDA but not Logistic Regression - perhaps the LDA assumptions of a normal distribution are not true.  
+Overall though, Naive Bayes aside, the test error rates are surprisingly low. And even Naive Bayes doesn't have a very high error rate, just a relatively high one.
+
+## Sensitivity
+```{r fig.width=9, fig.height=6, echo=FALSE}
+p = ggplot(df_out, aes(x=factor(model), y=sensitivity_pct, colour=model)) + geom_boxplot() 
+title = sprintf('Sensitivity across methods, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("Method") + ylab("Sensitivity %")
+```
+
+Sensitivity = True Positive Rate, the high levels indicate we are capturing all (in all of the methods aside from Logistic Regression, KNN K=100, and Naive Bayes) or mostly all, truly counterfeit banknotes. Once again Naive Bayes achieves a markedly lower result. 
+
+
+## Specificity
+```{r fig.width=9, fig.height=6, echo=FALSE}
+p = ggplot(df_out, aes(x=factor(model), y=specificity_pct, colour=model)) + geom_boxplot() 
+title = sprintf('Specificity across methods, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("Method") + ylab("Specificity %")
+
+```
+
+Results are much more scattered for Specificity, indicating that many of the methods are at least making a few False Positive calls, which given the domain may not be a bad thing as long as it isn't outweighed in some other aspect, e.g. if many counterfeit banknotes are being missed (which Sensitivity results indicated isn't the case except perhaps for Naive Bayes). All of that being said, knn $K$=1/2/5/11 are all reporting very high levels of Specificity, apparenlty 100% in some of the cross validation runs. Logistic regression and knn at $K$=21 are a definite step down, followed quickly by knn at $K$=51. Next up in terms of lower Specificity are QDA and knn 101, followed by the lowest of the non-Naive Bayes methods is LDA, mirroring its relative weakness in the error rate comparison, where I theorized the data may not match the LDA assummption of a Gaussian distribution.
+
+Going by the information displayed in the above charts a non-parametric approach like knn will generate the best classification results for this dataset, or another one that shares similar characteristics. Furthermore a low level of $K$, 11 or below, will work best for knn.
+
+
+
+# Extra 20 points problem: naive Bayes classifier
+
+Fit naive Bayes classifier (see lecture slides for examples of using `naiveBayes` function from package `e1071`) on banknote authentication dataset and assess its performance on test data by resampling along with logistic regression, LDA, QDA and KNN in Problem 4 above.  In other words, add naive Bayes to the rest of the methods evaluated above *and explain notable increase in the test error* for the naive Bayes classifier.  Please notice that the requirement for *explaining* the difference in performance of the naive Bayes classifier comparing to all others is essential for earning all the points available for this problem.  This is an extra point problem designed to be a level harder than the rest -- ideally, the explanation, aside from correctly pointing at the source of degraded performance, should also include numerical/graphical illustration of its effect using informative representation of banknote authentication data or relevant simulated data.  Best of luck!
+
+---
+
+Measurements for Naive Bayes were included in the box plots from **Problem 4**, where we saw a test error rate much higher than any of the other methods. My initial guess was that the poor results were due to lack of indepence in the predictor variables; Naive Bayes makes an assumption that all of the variables are independent of one another given a class and perhaps this does not hold true for this dataset.
+
+Create some correlation matrixes to check for possible dependence between the predictor variables - there may be some non-linear relationship also but if `cor` captures a link then we are probably on to something.
+
+Create correlation matrix for the full dataset, method = `pearson`
+
+```{r }
+pearson_cor = cor(data[,1:4], method='pearson')
+pearson_cor
+```
+
+And another Pearson, but for only the `y_class`=0. Some values are perhaps not too far from zero, e.g. 0.22/-0.22, but most are higher and some like `skewness` and `curtosis` show very high correlation.
+
+```{r }
+pearson_cor_0 = cor(data[which(data$y_class==0),1:4], method='pearson')
+pearson_cor_0
+```
+
+In case Spearman is going to show any surprises, run that also, this time with `y_class`=1. Again, a range of reported values but `skewness` and `curtosis` again have a very high (negative) correlation, and there are others with a high enough absolute value to indicate likely dependency.
+
+```{r }
+spearman_cor_1 = cor(data[which(data$y_class==1),1:4], method='spearman')
+spearman_cor_1
+```
+
+One attempt at a simple heatmap to illustrate correlation when banknote is genuine.
+
+```{r }
+pearson_cor_melted = melt(pearson_cor_0)
+ggplot(data = pearson_cor_melted, aes(x=Var1, y=Var2, fill=value)) + geom_tile()
+```
+
+And a fancier one using `ggcorrplot` library, this time displaying Spearman correlation results for is-counterfeit observations. That dark purple in the corner reinforces the rather high displayed `r spearman_cor_1['curtosis','skewness']` value.
+
+```{r }
+ggcorrplot(spearman_cor_1, hc.order = TRUE, type = "lower",  lab = TRUE, 
+           ggtheme = ggplot2::theme_gray,
+           colors = c("darkblue", "white", "cornflowerblue"))
+```
+
+
+As a final demonstration of lack-of-indepence I'll reproduce the pairwise plots from Homework 2. The full dataset is displayed here but the coloring allows for the recognition of patterns between the various variables and true `y_class` classification. 
+
+```{r }
+# from Week 02 examination of banknote dataset
+oldPar = par(mfrow=c(1:2),ps=16)
+pairs(data[1:4], pch=19, cex=0.4, col=(data$y_class * -1 + 3), main='y_class: 0 = green, 1 = red')
+```
+
+My limited research indicated that the assumption of conditional independence for Naive Bayes classification often goes unmet but that it is not uncommon to achieve very good results anyway. Not for this dataset perhaps - on its own the accuracy of Naive Bayes appeared pretty high but it couldn't really compare to any of the other methods we looked at.
+
+

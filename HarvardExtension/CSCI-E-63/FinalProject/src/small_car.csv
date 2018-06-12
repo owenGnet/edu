@@ -1,0 +1,102 @@
+Id,Acceleration,Cylinders,Displacement,Horsepower,Manufacturer,Model,Model_Year,MPG,Origin,Weight
+1,12,8,307,130,chevrolet    ,chevrolet chevelle malibu        ,70,18,USA    ,3504
+2,11.5,8,350,165,buick        ,buick skylark 320                ,70,15,USA    ,3693
+3,11,8,318,150,plymouth     ,plymouth satellite               ,70,18,USA    ,3436
+4,12,8,304,150,amc          ,amc rebel sst                    ,70,16,USA    ,3433
+5,10.5,8,302,140,ford         ,ford torino                      ,70,17,USA    ,3449
+6,10,8,429,198,ford         ,ford galaxie 500                 ,70,15,USA    ,4341
+7,9,8,454,220,chevrolet    ,chevrolet impala                 ,70,14,USA    ,4354
+8,8.5,8,440,215,plymouth     ,plymouth fury iii                ,70,14,USA    ,4312
+9,10,8,455,225,pontiac      ,pontiac catalina                 ,70,14,USA    ,4425
+10,8.5,8,390,190,amc          ,amc ambassador dpl               ,70,15,USA    ,3850
+11,17.5,4,133,115,citroen      ,citroen ds-21 pallas             ,70,NaN,France ,3090
+12,11.5,8,350,165,chevrolet    ,chevrolet chevelle concours (sw) ,70,NaN,USA    ,4142
+13,11,8,351,153,ford         ,ford torino (sw)                 ,70,NaN,USA    ,4034
+14,10.5,8,383,175,plymouth     ,plymouth satellite (sw)          ,70,NaN,USA    ,4166
+15,11,8,360,175,amc          ,amc rebel sst (sw)               ,70,NaN,USA    ,3850
+16,10,8,383,170,dodge        ,dodge challenger se              ,70,15,USA    ,3563
+17,8,8,340,160,plymouth     ,plymouth 'cuda 340               ,70,14,USA    ,3609
+18,8,8,302,140,ford         ,ford mustang boss 302            ,70,NaN,USA    ,3353
+19,9.5,8,400,150,chevrolet    ,chevrolet monte carlo            ,70,15,USA    ,3761
+20,10,8,455,225,buick        ,buick estate wagon (sw)          ,70,14,USA    ,3086
+21,15,4,113,95,toyota       ,toyota corona mark ii            ,70,24,Japan  ,2372
+22,15.5,6,198,95,plymouth     ,plymouth duster                  ,70,22,USA    ,2833
+23,15.5,6,199,97,amc          ,amc hornet                       ,70,18,USA    ,2774
+24,16,6,200,85,ford         ,ford maverick                    ,70,21,USA    ,2587
+25,14.5,4,97,88,datsun       ,datsun pl510                     ,70,27,Japan  ,2130
+26,20.5,4,97,46,volkswagen   ,volkswagen 1131 deluxe sedan     ,70,26,Germany,1835
+27,17.5,4,110,87,peugeot      ,peugeot 504                      ,70,25,France ,2672
+28,14.5,4,107,90,audi         ,audi 100 ls                      ,70,24,Germany,2430
+29,17.5,4,104,95,saab         ,saab 99e                         ,70,25,Sweden ,2375
+30,12.5,4,121,113,bmw          ,bmw 2002                         ,70,26,Germany,2234
+31,15,6,199,90,amc          ,amc gremlin                      ,70,21,USA    ,2648
+32,14,8,360,215,ford         ,ford f250                        ,70,10,USA    ,4615
+33,15,8,307,200,chevrolet    ,chevrolet c20                    ,70,10,USA    ,4376
+34,13.5,8,318,210,dodge        ,dodge d200                       ,70,11,USA    ,4382
+35,18.5,8,304,193,ih           ,ih 1200d                         ,70,9,USA    ,4732
+36,15.5,4,107,86,fiat         ,fiat 131                         ,76,28,Italy  ,2464
+37,16.9,4,116,81,opel         ,opel 1900                        ,76,25,Germany,2220
+38,14.9,4,140,92,ford         ,ford capri ii                    ,76,25,USA    ,2572
+39,17.7,4,98,79,dodge        ,dodge colt                       ,76,26,USA    ,2255
+40,15.3,4,101,83,renault      ,renault 12tl                     ,76,27,France ,2202
+41,13,8,305,140,chevrolet    ,chevrolet chevelle malibu classic,76,17.5,USA    ,4215
+42,13,8,318,150,dodge        ,dodge coronet brougham           ,76,16,USA    ,4190
+43,13.9,8,304,120,amc          ,amc matador                      ,76,15.5,USA    ,3962
+44,12.8,8,351,152,ford         ,ford gran torino                 ,76,14.5,USA    ,4215
+45,15.4,6,225,100,plymouth     ,plymouth valiant                 ,76,22,USA    ,3233
+46,14.5,6,250,105,chevrolet    ,chevrolet nova                   ,76,22,USA    ,3353
+47,17.6,6,200,81,ford         ,ford maverick                    ,76,24,USA    ,3012
+48,17.6,6,232,90,amc          ,amc hornet                       ,76,22.5,USA    ,3085
+49,22.2,4,85,52,chevrolet    ,chevrolet chevette               ,76,29,USA    ,2035
+50,22.1,4,98,60,chevrolet    ,chevrolet woody                  ,76,24.5,USA    ,2164
+51,14.2,4,90,70,volkswagen   ,volkswagen rabbit                ,76,29,Germany,1937
+52,17.4,4,91,53,honda        ,honda civic                      ,76,33,Japan  ,1795
+53,17.7,6,225,100,dodge        ,dodge aspen se                   ,76,20,USA    ,3651
+54,21,6,250,78,ford         ,ford granada ghia                ,76,18,USA    ,3574
+55,16.2,6,250,110,pontiac      ,pontiac ventura sj               ,76,18.5,USA    ,3645
+56,17.8,6,258,95,amc          ,amc pacer d/l                    ,76,17.5,USA    ,3193
+57,12.2,4,97,71,volkswagen   ,volkswagen rabbit                ,76,29.5,Germany,1825
+58,17,4,85,70,datsun       ,datsun b-210                     ,76,32,Japan  ,1990
+59,16.4,4,97,75,toyota       ,toyota corolla                   ,76,28,Japan  ,2155
+60,13.6,4,140,72,ford         ,ford pinto                       ,76,26.5,USA    ,2565
+61,15.7,4,130,102,volvo        ,volvo 245                        ,76,20,Sweden ,3150
+62,13.2,8,318,150,plymouth     ,plymouth volare premier v8       ,76,13,USA    ,3940
+63,21.9,4,120,88,peugeot      ,peugeot 504                      ,76,19,France ,3270
+64,15.5,6,156,108,toyota       ,toyota mark ii                   ,76,19,Japan  ,2930
+65,16.7,6,168,120,mercedes-benz,mercedes-benz 280s               ,76,16.5,Germany,3820
+66,12.1,8,350,180,cadillac     ,cadillac seville                 ,76,16.5,USA    ,4380
+67,12,8,350,145,chevrolet    ,chevrolet c10                    ,76,13,USA    ,4055
+68,15,8,302,130,ford         ,ford f108                        ,76,13,USA    ,3870
+69,14,8,318,150,dodge        ,dodge d100                       ,76,13,USA    ,3755
+70,19.6,4,112,88,chevrolet    ,chevrolet cavalier               ,82,28,USA    ,2605
+71,18.6,4,112,88,chevrolet    ,chevrolet cavalier wagon         ,82,27,USA    ,2640
+72,18,4,112,88,chevrolet    ,chevrolet cavalier 2-door        ,82,34,USA    ,2395
+73,16.2,4,112,85,pontiac      ,pontiac j2000 se hatchback       ,82,31,USA    ,2575
+74,16,4,135,84,dodge        ,dodge aries se                   ,82,29,USA    ,2525
+75,18,4,151,90,pontiac      ,pontiac phoenix                  ,82,27,USA    ,2735
+76,16.4,4,140,92,ford         ,ford fairmont futura             ,82,24,USA    ,2865
+77,20.5,4,151,82,amc          ,amc concord dl                   ,82,23,USA    ,3035
+78,15.3,4,105,74,volkswagen   ,volkswagen rabbit l              ,82,36,Germany,1980
+79,18.2,4,91,68,mazda        ,mazda glc custom l               ,82,37,Japan  ,2025
+80,17.6,4,91,68,mazda        ,mazda glc custom                 ,82,31,Japan  ,1970
+81,14.7,4,105,63,plymouth     ,plymouth horizon miser           ,82,38,USA    ,2125
+82,17.3,4,98,70,mercury      ,mercury lynx l                   ,82,36,USA    ,2125
+83,14.5,4,120,88,nissan       ,nissan stanza xe                 ,82,36,Japan  ,2160
+84,14.5,4,107,75,honda        ,honda accord                     ,82,36,Japan  ,2205
+85,16.9,4,108,70,toyota       ,toyota corolla                   ,82,34,Japan  ,2245
+86,15,4,91,67,honda        ,honda civic                      ,82,38,Japan  ,1965
+87,15.7,4,91,67,honda        ,honda civic (auto)               ,82,32,Japan  ,1965
+88,16.2,4,91,67,datsun       ,datsun 310 gx                    ,82,38,Japan  ,1995
+89,16.4,6,181,110,buick        ,buick century limited            ,82,25,USA    ,2945
+90,17,6,262,85,oldsmobile   ,oldsmobile cutlass ciera (diesel),82,38,USA    ,3015
+91,14.5,4,156,92,chrysler     ,chrysler lebaron medallion       ,82,26,USA    ,2585
+92,14.7,6,232,112,ford         ,ford granada l                   ,82,22,USA    ,2835
+93,13.9,4,144,96,toyota       ,toyota celica gt                 ,82,32,Japan  ,2665
+94,13,4,135,84,dodge        ,dodge charger 2.2                ,82,36,USA    ,2370
+95,17.3,4,151,90,chevrolet    ,chevrolet camaro                 ,82,27,USA    ,2950
+96,15.6,4,140,86,ford         ,ford mustang gl                  ,82,27,USA    ,2790
+97,24.6,4,97,52,volkswagen   ,volkswagen pickup                ,82,44,Germany,2130
+98,11.6,4,135,84,dodge        ,dodge rampage                    ,82,32,USA    ,2295
+99,18.6,4,120,79,ford         ,ford ranger                      ,82,28,USA    ,2625
+100,19.4,4,119,82,chevrolet    ,chevrolet s-10                   ,82,31,USA    ,2720
+

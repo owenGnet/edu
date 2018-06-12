@@ -1,0 +1,14 @@
+// 003382d5-4384-403e-8f21-3654fc76745b	2017-06-29 05:38:50	harvard.edu	u09
+
+
+{
+  "name" : "hw5_p3",
+  "namespace" : "owenG.net.e88.hw5",
+  "type": "record",
+  "fields" : [
+      {"name": "uuid", "type": "string"},
+      {"name": "timestamp", "type": "string"},
+      {"name": "url", "type": "string"},
+      {"name": "userID", "type": "string"} 
+    ]
+}

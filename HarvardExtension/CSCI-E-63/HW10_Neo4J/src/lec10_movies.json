@@ -1,0 +1,49 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE (m:Movie {props}) RETURN m",
+      "parameters": {
+        "props": [
+          {
+            "title": "The Matrix",
+            "year": "1999-03-31"
+          },
+          {
+            "title": "The Matrix Reloaded",
+            "year": "2003-05-07"
+          },
+          {
+            "title": "The Matrix Revolutions",
+            "year": "2003-10-27"
+          }
+        ]
+      }
+    },
+    {
+      "statement": "CREATE (a:Actor {props}) RETURN a",
+      "parameters": {
+        "props": [
+          {
+            "name": "Keanu Reeves"
+          },
+          {
+            "name": "Laurence Fishburne"
+          },
+          {
+            "name": "Carrie-Anne Moss"
+          }
+        ]
+      }
+    },
+    {
+      "statement": "MATCH (m:Movie) MATCH (a:Actor { name:'Keanu Reeves' })  CREATE (a)-[:ACTS_IN { role : 'Neo' }]->(m)"
+    },
+    {
+      "statement": "MATCH (m:Movie) MATCH (a:Actor { name:'Laurence Fishburne' })  CREATE (a)-[:ACTS_IN { role : 'Morpheus' }]->(m)"
+    },
+    {
+      "statement": "MATCH (m:Movie) MATCH (a:Actor { name:'Carrie-Anne Moss' })  CREATE (a)-[:ACTS_IN { role : 'Trinity' }]->(m)"
+    }
+
+  ]
+}

@@ -1,0 +1,52 @@
+---
+title: "CSCI E-63C Week 7 midterm exam"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(glmnet)
+library(leaps)
+library(ggplot2)
+library(MASS)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+The goal of the midterm exma is to apply some of the methods for supervised and unsupervised analysis to a new dataset.  We will work with data characterizing the relationship between wine quality and its analytical characteristics [available at UCI ML repository](https://archive.ics.uci.edu/ml/datasets/Wine+Quality) as well as in this course website on canvas.  The overall goal will be to use data modeling approaches to understand which wine properties influence the most wine quality as determined by expert evaluation.  The output variable in this case assigns wine to discrete categories between 0 (the worst) and 10 (the best), so that this problem can be formulated as classification or regression -- here we will stick to the latter and treat/model outcome as a continuous variable.  For more details please see [dataset description available at UCI ML](https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality.names) or corresponding file in this course website on canvas.  Please note that there is another, much smaller, dataset on UCI ML also characterizing wine in terms of its analytical properties -- make sure to use correct URL as shown above, or, to eliminate possibility for ambiguity, the data available on the course website in canvas -- the correct dataset contains several thousand observations. For simplicity, clarity and to decrease your dependency on the network reliability and UCI ML availability you are advised to download data made available in this course website to your local folder and work with this local copy.
+
+There are two compilations of data available under the URL shown above as well as in the course website in canvas -- separate for red and for white wine -- please develop models of wine quality for each of them, investigate attributes deemed important for wine quality in both and determine whether quality of red and white wine is influenced predominantly by the same or different analytical properties (i.e. predictors in these datasets).  Lastly, as an exercise in unsupervised learning you will be asked to combine analytical data for red and white wine and describe the structure of the resulting data -- whether there are any well defined clusters, what subsets of observations they appear to represent, which attributes seem to affect the most this structure in the data, etc.
+
+Finally, as you will notice, the instructions here are terser than in the previous homework assignments. We expect that you use what you've learned in the class to complete the analysis and draw appropriate conclusions based on the data.  All approaches that you are expected to apply here have been exercised in the preceeding weekly assignments -- please feel free to consult your submissions and/or official solutions as to how they have applied to different datasets.  As always, if something appears to be unclear, please ask questions -- we may change to private mode those that in our opinion reveal too many details as we see fit.
+
+# Sub-problem 1: load and summarize the data (20 points)
+
+Download and read in the data, produce numerical and graphical summaries of the dataset attributes, decide whether they can be used
+for modeling in untransformed form or any transformations are justified, comment on correlation structure and whether some of the predictors suggest relationship with the outcome.
+
+
+# Sub-problem 2: choose optimal models by exhaustive, forward and backward selection (20 points)
+
+Use `regsubsets` from library `leaps` to choose optimal set of variables for modeling wine quality for red and white wine (separately), describe differences and similarities between attributes deemed important in each case.
+
+
+# Sub-problem 3: optimal model by cross-validation (25 points)
+
+Use cross-validation (or any other resampling strategy of your choice) to estimate test error for models with different numbers of variables.  Compare and comment on the number of variables deemed optimal by resampling versus those selected by `regsubsets` in the previous task.  Compare resulting models built separately for red and white wine data.
+
+
+# Sub-problem 4: lasso/ridge (25 points)
+
+Use regularized approaches (i.e. lasso and ridge) to model quality of red and white wine (separately).  Compare resulting models (in terms of number of variables and their effects) to those selected in the previous two tasks (by `regsubsets` and resampling), comment on differences and similarities among them. 
+
+
+# Sub-problem 5: PCA (10 points)
+
+Merge data for red and white wine (function `rbind` allows merging of two matrices/data frames with the same number of columns) and plot data projection to the first two principal components (e.g. biplot or similar plots).  Does this representation suggest presence of clustering structure in the data?  Does wine type (i.e. red or white) or quality appear to be associated with different regions occupied by observations in the plot? Please remember *not* to include quality attribute or wine type (red or white) indicator in your merged data, otherwise, apparent association of quality or wine type with PCA layout will be influenced by presence of those indicators in your data.
+
+
+# Extra 10 points: model wine quality using principal components
+
+Compute PCA representation of the data for one of the wine types (red or white) *excluding wine quality attribute* (of course!). Use resulting principal components (slot `x` in the output of `prcomp`) as new predictors to fit a linear model of wine quality as a function of these predictors.  Compare resulting fit (in terms of MSE, r-squared, etc.) to those obtained above.  Comment on the differences and similarities between these fits.

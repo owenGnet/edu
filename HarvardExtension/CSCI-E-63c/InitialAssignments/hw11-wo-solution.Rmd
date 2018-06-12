@@ -1,0 +1,63 @@
+---
+title: "CSCI E-63C Week 11 assignment"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(ISLR)
+library(e1071)
+library(randomForest)
+library(class)
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Preface
+
+This week assignment will explore behavior of support vector classifiers and SVMs (following the distinction made in ISLR) on banknote authentication dataset from UCI ML archive.  We worked with it on multiple occasions before (most recently two weeks ago evaluating performance of logistic regression, discriminant analysis and KNN on it):
+
+```{r dbaExample}
+dbaDat <- read.table("data_banknote_authentication.txt",sep=",")
+colnames(dbaDat) <- c("var","skew","curt","entr","auth")
+dbaDat$auth <- factor(dbaDat$auth)
+dim(dbaDat)
+summary(dbaDat)
+head(dbaDat)
+pairs(dbaDat[,1:4],col=as.numeric(dbaDat$auth))
+```
+
+Here we will use SVM implementation available in library `e1071` to fit classifiers with linear and radial (polynomial for extra points) kernels and compare their relative performance as well as to that of random forest and KNN.
+
+# Problem 1 (20 points): support vector classifier (i.e. using linear kernel) 
+
+Use `svm` from library `e1071` with `kernel="linear"` to fit classifier (e.g. ISLR Ch.9.6.1) to the entire banknote authentication dataset setting parameter `cost` to 0.001, 1, 1000 and 1 mln.  Describe how this change in parameter `cost` affects model fitting process (hint: the difficulty of the underlying optimization problem increases with cost -- can you explain what drives it?) and its outcome (how does the number of support vectors change with `cost`?) and what are the implications of that.  Explain why change in `cost` value impacts number of support vectors found. (Hint: there is an answer in ISLR.)  Use `tune` function from library `e1071` (see ISLR Ch.9.6.1 for details and examples of usage) to determine approximate value of cost (in the range between 0.1 and 100 -- the suggested range spanning ordes of magnitude should hint that the density of the grid should be approximately logarithmic -- e.g. 1, 3, 10, ... or 1, 2, 5, 10, ... etc.) that yields the lowest error in cross-validation employed by `tune`.  Setup a resampling procedure repeatedly splitting entire dataset into training and test, using training data to `tune` cost value and test dataset to estimate classification error. Report and discuss distributions of test errors from this procedure and selected values of `cost`.
+
+
+
+# Problem 2 (10 points): comparison to random forest
+
+Fit random forest classifier on the entire banknote authentication dataset with default parameters.  Calculate resulting misclassification error as reported by the confusion matrix in random forest output.  Explain why error reported in random forest confusion matrix represents estimated test (as opposed to train) error of the procedure.  Compare resulting test error to that for support vector classifier obtained above and discuss results of such comparison.
+
+# Problem 3 (10 points): Comparison to cross-validation tuned KNN predictor
+
+Use convenience wrapper `tune.knn` provided by the library `e1071` on the entire dataset to determine optimal value for the number of the nearest neighbors 'k' to be used in KNN classifier.  Consider our observations in week 9 assignment when choosing range of values of `k` to be evaluated by `tune.knn`.  Setup resampling procedure similar to that used above for support vector classifier that will repeatedly: a) split banknote authentication dataset into training and test, b) use `tune.knn` on training data to determine optimal `k`, and c) use `k` estimated by `tune.knn` to make KNN classifications on test data.  Report and discuss distributions of test errors from this procedure and selected values of `k`, compare them to those obtained for random forest and support vector classifier above.
+
+
+# Problem 4 (20 points): SVM with radial kernel
+
+## Sub-problem 4a (10 points): impact of $gamma$ on classification surface
+
+*Plot* SVM model fit to the banknote authentication dataset using (for the ease of plotting) *only variance and skewness* as predictors variables, `kernel="radial"`, `cost=1` and `gamma=1` (see ISLR Ch.9.6.2 for an example of that done with a simulated dataset).  You should be able to see in the resulting plot the magenta-cyan classification boundary as computed by this model.  Produce the same kinds of plots using 0.01 and 100 as values of `gamma` also.  Compare classification boundaries between these three plots and describe how they are impacted by the change in the value of `gamma`.  Can you trace it back to the role of `gamma` in the equation introducing it with the radial kernel in ISLR?
+
+
+## Sub-problem 4b (10 points): test error for SVM with radial kernel
+
+Similar to how it was done above for support vector classifier (and KNN), set up a resampling process that will repeatedly: a) split the entire dataset (using all attributes as predictors) into training and test datasets, b) use `tune` function to determine optimal values of `cost` and `gamma` and c) calculate test error using these values of `cost` and `gamma`.  You can start with `cost=c(1,2,5,10,20)` and `gamma=c(0.01,0.02,0.05,0.1,0.2)` as starting ranges to evaluate by `tune`, but please feel free to experiment with different sets of values and discuss the results of it and how you would go about selecting those ranges starting from scratch.  Present resulting test error graphically, compare it to that of support vector classifier (with linear kernel), random forest and KNN classifiers obtained above and discuss results of these comparisons. 
+
+# Extra 10 points problem: SVM with polynomial kernel
+
+Repeat what was done above (plots of decision boundaries for various interesting values of tuning parameters and test error for their best values estimated from training data) using `kernel="polynomial"`.   Determine ranges of `coef0`, `degree`, `cost` and `gamma` to be evaluated by `tune`.  Present and discuss resulting test error and how it compares to linear and radial kernels and those of random forest and KNN.
+

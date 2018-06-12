@@ -1,0 +1,298 @@
+---
+title: 'CSCI E-63C: Week 3 Assignment'
+output:
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE, results='hide'}
+library(ggplot2)
+library(ISLR)
+library(car)
+library(dplyr)
+library(readr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preface
+
+The goal of this week assignment is to practice basic tools available in R for developing linear regression models with one or more variables, conduct visual and quantitative evaluation of their relative performance and reason about associated tradeoffs.  We will continue working with abalone dataset (that you have already downloaded and used for the previous week assignment) and will use some of the variables available there to develop model of snail age.  Given the simplicity of the measurements available in this dataset (essentially just dimensions and masses of various compartments of the mollusc) and potential variability in growth rates due to differences in environmental conditions (e.g. location, temperature, nutrients, etc.) that are not captured in this dataset, we should expect substantial fraction of variability in abalone age to remain unexplained as part of this exercise.  Furthermore, given strong correlations between some of the predictors in this dataset it is possible that only a small number of those could be justifiably used in the model (for the reasons related to collinearity - see Ch.3.3.3 section 6 of ISLR).
+
+```{r abalone, echo=FALSE, results='hide'}
+abaDat <- read.table("./data/abalone.data",sep=",")
+colnames(abaDat) <- c("sex","len","diam","h","ww","sw","vw","sh","rings")
+abaDat$age <- abaDat$rings+1.5
+dim(abaDat)
+```
+
+Here an uninspiring example of the model of shell length and diameter is used to illustrate R tools that will be needed for this assignment. Please note that by this time `abaDat` dataset has been already created and corresponding columns have been named `len` and `diam` respectively -- the variable names in your code likely will be different.  Then a simple linear model can be fit using function `lm()` and summarized using `summary`:
+
+```{r diamlensumm}
+summary(lm(len~diam,abaDat))
+```
+
+The plot of predictor and response with regression line added to it can be generated using standard R functions `plot` and `abline`:
+
+```{r diamlenplot}
+plot(abaDat[,c("diam","len")])
+abline(lm(len~diam,abaDat))
+```
+
+Diagnostic plots for this model can be obtained also by the call to `plot` with `lm()` result as input:
+
+```{r diamlendiag,fig.width=8,fig.height=8}
+old.par <- par(mfrow=c(2,2))
+plot(lm(len~diam,abaDat))
+par(old.par)
+```
+
+R functions `confint` returns confidence intervals for model parameters and `predict` (with appropriate parameters) returns model predictions for the new data and corresponding estimates of uncertainty associated with them:
+
+```{r diamlenintls}
+confint(lm(len~diam,abaDat))
+predict(lm(len~diam,abaDat),newdata=data.frame(diam=c(0.2,0.3,0.4,0.5)),interval='confidence')
+predict(lm(len~diam,abaDat),newdata=data.frame(diam=c(0.2,0.3,0.4,0.5)),interval='prediction')
+```
+
+# Problem 1: model of age and shell weight (30 points)
+
+Here we will identify variable most correlated with the outcome (abalone age), build simple linear model of snail age (rings+1.5 as per dataset description) as function of this variable, evaluate model summary and diagnostic plots and assess impact of using log-transformed (instead of untransformed) attributes on the model peformance.  The following steps provide approximate outline of tasks for achieving these goals:
+
+1. Calculate correlations between all *continuous* attributes in this dataset.  Given potential non-linear relationship between some of the attributes and snail age, it might be prudent to use both Pearson and Spearman correlations to determine which variable is most robustly correlated with age.
+
+2. Fit linear model of age as outcome and shell weight as predictor using R function `lm`, display the result using `summary` function, use its output to answer the following questions:
+
+   + Does this predictor explain significant amount of variability in response?  I.e. is there significant association between them?
+   
+   + What is the RSE and $R^2$ of this model?  Remember, you can find them in the `summary` output or use `sigma` and `r.sq` slots in the result returned by `summary` instead
+   
+   + What are the model coefficients and what would be their interpretation? What is the meaning of the intercept of the model, for example?  How sensible is it?
+
+3. Create scatterplot of age and shell weight and add regression line from the model to the plot using `abline` function
+
+4. Create diagnostic plots of the model and comment on any irregularities that they present.  For instance, does plot of residuals vs. fitted values suggest presence of non-linearity that remained unexplained by the model?  How does it compare to the plot of the predictor and outcome with regression line added to it that was generated above?
+
+5. Use function `confint` to obtain confidence intervals on model parameters
+
+6. Use this model and `predict` function to make predictions for shell weight values of 0.1, 0.2 and 0.3. Use `confidence` and `prediction` settings for parameter `interval` in the call to `predict` to obtain confidence and prediction intervals on these model predictions.  Explain the differences between interpretation of:
+    + confidence intervals on model parameters and model predictions
+    + confidence and prediction intervals on model predictions
+    + Comment on whether confidence or prediction intervals (on predictions) are wider and why
+
+---
+
+Load in the data as a tibble and transform original rings value into `y_age` equivalent.
+```{r p2a}
+
+data_path = './data/abalone.data'
+data = read_csv(data_path, skip=-1)
+# name appropriately data set attributes
+columns = c('sex','len','diameter','height','whole_weight', 'shucked_weight', 'viscera_weight', 'shell_weight', 'y_rings')
+colnames(data) = columns
+# Replace  the raw rings value with adjusted age equivalent: Rings,	+1.5 gives the age in years
+data$y_age =  data$y_rings + 1.5
+# Remove the raw y_rings column
+data = data %>% select(-y_rings)
+print(data)
+```
+
+**1. Calculate correlations between all continuous attributes in this dataset. Given potential non-linear relationship between some of the attributes and snail age, it might be prudent to use both Pearson and Spearman correlations to determine which variable is most robustly correlated with age.**
+
+The `sex` variable is categorical so that won't be included in correlation results below. The transformed outcome variable, `y_age` appears to be discrete variable (whole and half numbers ranging from 2.5 to 30.5) but the instructions indicate it should be included in the results.
+
+*Pearson correlation*
+```{r pearson}
+# among all the variables, sex is categorical and y_rings is the (discrete) outcome variable
+cor((data %>% select(-sex)),  use='all.obs',  method='pearson')
+```
+*Spearman correlation*
+```{r spearman}
+cor((data %>% select(-sex)),  use='all.obs',  method='spearman')
+```
+
+All present correlations are reported as positive ones and in both correlation calculations `shell_weight` has the highest correlation with `y_age`, 0.6275740 under Pearson and 0.6924746 under Spearman.  
+
+
+**2. Fit linear model of age as outcome and shell weight as predictor using R function `lm`, display the result using `summary` function, use its output to answer the following questions:**
+
+```{r lm1}
+m = lm(y_age ~ shell_weight, data)
+model_summary = summary(m)
+model_summary
+
+```
+**Does this predictor explain significant amount of variability in response? I.e. is there significant association between them?**  
+
+Yes, the very low repored p-value along with the `***` significance code indicate there is a strong relationship between `shell_weight` and `y_age`.
+
+**What is the RSE and $R^2$ of this model? Remember, you can find them in the summary output or use `sigma` and `r.sq` slots in the result returned by summary instead**  
+
+The RSE is `r model_summary$sigma` and the $R^2$ is `r model_summary$r.sq`.  
+
+**What are the model coefficients and what would be their interpretation? What is the meaning of the intercept of the model, for example? How sensible is it?**  
+
+The model coefficients are `r coef(m)[1]` for the Intercept and `r coef(m)[2]` for `shell_weight`. The Intercept coefficient indicates what value age would be predicted to be if `shell_weight` = 0. In this case the initial proposition doesn't make sense, where we can't have a zero `shell_weight`; even if you propose a very small `shell_weiht`, e.g. 0.001, presumably the predicted age would be something very close to `r coef(m)[1]` which again doesn't really make any sense. The coefficient for `shell_weight` indicates what change in age would be predicted for each unit increment in `shell_weight`, e.g. goin from a weight of 0.2340 grams to 1.2340 grams would result in a `r coef(m)[2]` change (increase since it is a positive value) in years.  
+
+**3. Create scatterplot of age and shell weight and add regression line from the model to the plot using abline function**  
+
+```{r lm_plot1}
+plot(data$shell_weight, data$y_age, pch=19, cex=0.5)
+abline(m, col='red')
+
+```
+
+**4. Create diagnostic plots of the model and comment on any irregularities that they present. For instance, does plot of residuals vs. fitted values suggest presence of non-linearity that remained unexplained by the model? How does it compare to the plot of the predictor and outcome with regression line added to it that was generated above?**  
+
+```{r diag_plots}
+old.par = par(mfrow=c(2,2))
+plot(m)
+```
+
+
+The first plot, Residuals vs. Fitted does indeed suggest some non-linearity as the red line through the data has a bend in it and furthermore the data points are not evenly spread on either side of the line, those below the line are both fewer and clustered more closely to the line, i.e. non-constant variance. For linear model one of the assumptions is that errors are evenly distributed, a scenario that can be addressed separately isn't by default. 
+The Quantile-Quantile plot will show if the actual residuals deviate from (expected/assumed) normal distribution. If all the residuals were more or less on the diagonal line then we would have normally distributed deviations. That only holds true for a portion of this dataset and the divergence in the right hand side of the plot supports the argument of the first plot, which indicated non-normal distribution of residuals.  
+Scale-Location plot is another one that checks for even distribution of residuals and another one that indicates failure as the residuals do not maintain an equal distribution around the red smoother-line.  
+The final plot, Residuals vs. Leverage will help indicate if there are any outlier values casting an undue influence on the model. There are a number of data points on the lower half of the plot that have relatively high leverage, though not with large residuals. The distance of these points from the y axis strikes me as being potentially troublesome but I don't have enough experience to say to what degree their low residual values counteract their high leverage.  
+
+
+**5. Use function confint to obtain confidence intervals on model parameters**  
+
+```{r confidence_interval}
+confint(m)
+
+```
+
+**6. Use this model and predict function to make predictions for shell weight values of 0.1, 0.2 and 0.3. Use confidence and prediction settings for parameter interval in the call to predict to obtain confidence and prediction intervals on these model predictions.**  
+
+Confidence intervals on model predictions, shell weight values of 0.1/0.2/0.3
+```{r pred_conf}
+predict(m, data.frame(shell_weight=(c(0.1, 0.2, 0.3))), interval='confidence')
+
+```
+And prediction intervals on same
+```{r pred_pred}
+predict(m, data.frame(shell_weight=(c(0.1, 0.2, 0.3))), interval='prediction')
+
+```
+**Explain the differences between interpretation of:**  
+**+ confidence intervals on model parameters and model predictions**  
+
+Confidence intervals on model parameters indicate likelihood that the true relationship has been captured in a given sample, how closely has f(X) been estimated. If many samples are run through the model, 95% of generated confidence intervals will capture the "true" coefficient/slope for `shell_weight`. A larger sample of data would result in a narrower confidence interval.  
+
+**+ confidence and prediction intervals on model predictions**  
+
+A confidence interval on model prediction will indicate level of uncertainty for the prediction as it relates to the average value (shell weight in this model) over the full population. The corresponding prediction interval will indicate level of uncertainty for a specified value, in this scenario for shell weights to 0.1 / 0.2 / 0.3 grams.
+
+
+**+ Comment on whether confidence or prediction intervals (on predictions) are wider and why**  
+The prediction interval will always be wider as it includes the uncertainty as to how much a specific value differs from the model, in addition to uncertainty as to whether or not true relationship (coefficient) has been captured in the first place. The confidence interval only needs to cover the latter uncertainty instead of both levels of uncertainty, and so is narrower.  
+
+
+# Problem 2: model using log-transformed attributes (20 points)
+
+**1. Use `lm()` to fit a regression model of *log-transformed* age as linear function of *log-transformed* shell weight and use `summary` to evaluate its results.  Can we compare fits obtained from using untransformed (above) and log-transformed attributes?  Can we directly compare RSE from these two models?  What about comparing $R^2$?  What would we conclude from this? (Please consult ISLR Ch.3.1.3 if unsure)  What would be the physical meaning of model coefficients this time?  What does model intercept represent in this case, for example?  How sensible is this and how does it compare to that from the fit on untransformed data?**
+
+Add log-transformed versions of both `y_age` and `shell_weight` to the tibble, create model based on those transformed values, and output `summary` of resulting model:
+```{r 2_log}
+
+data = data %>% mutate(
+  y_age_loggy = log(y_age),
+  shell_weight_loggy = log(shell_weight)
+)
+
+m_loggy = lm(y_age_loggy ~ shell_weight_loggy, data)
+m_loggy_summary = summary(m_loggy)
+m_loggy_summary
+```
+
+The fits can be compared, depending on which measures are used for comparison. For example, RSE values can't be directly compared, unless perhaps they were very close to zero in both models, since the RSE calculation is based on units of the outcome variable. In this case it would be comparing values measured in years (of age) vs. log-transformed years On the other hand $R^2$ is a simple proportion that and the units of measurement for `y_age` vs. `y_age_loggy` would not matter at all. The $R^2$ will be a number between 0 and 1, with higher values indicating better fit, and comparison between the two model's numbers being a valid strategy. In more specific terms, the $R^2$ from the newer model based on log-transformed variables is higher than that using the raw values (`r m_loggy_summary$r.sq` vs. `r model_summary$r.sq`) and therefore the fit is better.
+
+The Intercept value is simply the log-transformed age that would be predicted if `shell_weight` = 0, i.e. `r coef(m_loggy_summary)[1]` (reverse transformed: `r exp(coef(m_loggy_summary)[1])`) while the coefficient on `shell_weight_loggy` is the "log" slope, the predicted change in the log of `y_age` for a one gram change in `shell_weight`. I don't see the Intercept value in the new model making more or less sense than it does in the original model. And while the slope coefficient is perhaps equally sensible in objective terms under both scenarios, I don't find thinking in terms of `log` values comes naturally to me. So in practical terms the coefficient of `shell_weight` from the first model strikes me as a lot more interpretable... and therefore that one "makes more sense".
+
+
+**2. Create a XY-scatterplot of log-transformed predictor and response and add corresponding regression line to it.  Compared it to the same plot but in untransformed coordinates obtained above.  What would you conclude from such comparison?**  
+
+The new scatterplot, with log-transformed predictor:
+```{r lm_plot2}
+par = old.par
+plot(data$shell_weight_loggy, data$y_age_loggy, pch=19, cex=0.5)
+abline(m_loggy, col='red')
+
+```
+
+
+With the original scatterplot below, for comparison. The main difference that jups to my mind is that the log-transformed predictor variables are more spread out across the x-axis, which should make the model more robust.
+```{r lm_plot3}
+
+plot(data$shell_weight, data$y_age, pch=19, cex=0.5)
+abline(m, col='red')
+
+```
+
+
+**3. Make diagnostic plots for model fit on log-transformed age and shell weight.  Compare their appearance to that for the model using original scale of measurements. What would you conclude from this comparison about their relative quality?**  
+
+```{r diag_plots2}
+old.par = par(mfrow=c(2,2))
+plot(m_loggy)
+```
+
+Comparing above to the original ones, reproduced again below.
+Residuals vs Fitted looks better, there is still a fan shaped distribution but a more even spread of values. For the Quantile-Quantile graph we can see there is a better fit in the upper right hand corner, not nearly as much deviance as there had been in the earlier model. Scale-Location remains difficult to interpret, and to say whether one is "better" than the next. In the final plot there do appear to be fewer outliers, there is the on on the far right but the other points at the edge are somewhat closer to neighboring points, towards the right hand side.
+
+
+Here are the orig ones again:
+```{r diag_plots3}
+old.par = par(mfrow=c(2,2))
+plot(m)
+```
+
+
+# Problem 3: Adding second variable to the model (10 points)
+
+**To explore effects of adding another variable to the model, continue using log-transformed attributes and fit a model of log-transformed age as a function of shell weight and shucked weight (both log-transformed also).  Just an additive model -- no interaction term is necessary at this point. Please obtain and evaluate the summary of this model fit, confidence intervals on its parameters and its diagnostic plots. Where applicable, compare them to the model obtained above and reflect on pros and cons of including shucked weight as another variable into the model.**  
+
+
+Add a log-transformed version of `shucked_weight` and use that + the log-transformed `shell_weight` from earlier problems in order create a multiple linear regression model.
+```{r 3_log}
+data = data %>% mutate(
+  shucked_weight_loggy = log(shucked_weight)
+)
+
+m_loggy2 = lm(y_age_loggy ~ shell_weight_loggy + shucked_weight_loggy, data)
+m_loggy2_summary = summary(m_loggy2)
+m_loggy2_summary
+
+```
+
+With the new model `shell_weight_loggy` continues to be marked with a high-signfigance code + a very low p-value, and the new `shucked_weight_loggy` is similar in both aspects, though it has a negative coefficent. The RSE is lower in new model, indicating that on average the outcome variable will be closer to the regression line, i.e. it fits the data better. Similarly, the higher $R^2$ in the multiple linear regression model shows that it does a better job of covering the variability in the (log) age values.
+
+
+```{r confidence_interval2}
+
+confint(m_loggy)
+
+confint(m_loggy2)
+
+```
+
+We hadn't previously calculated a confidence interval on the parameters related to 2nd simple regression model, the one with log-transformed `y_age` + log-transformed `shell_weight`, so that is displayed first, followed by the new set of numbers. The general upper/lower bounds appear to have shifted but the range itself hasn't changed much.
+
+
+```{r diag_plots4}
+old.par = par(mfrow=c(2,2))
+plot(m_loggy2)
+```
+
+Finally are the new set of diagnostic plots. Of those the only ones that I can see a clear, understandale difference within are:  
+
+1. residuals vs. fitted  
+
+  + the first log-transformed model had shown an improvement in even residual variance across fitted values and the one above shows actual improvements in terms of increased homoscedasticity, less of a fan shape, more of a flatter distribution.  
+  
+2. Quantile-Quantile  
+
+  + same story here, there had been an improvement in the log-transformed version of simple linear regression and the improvement continues, to a lesser degree, with plotted values that more closely hew to a theoretical normal distribution, specifically in the upper-right corner of the plot.
+
+Initially everything above would seem to count as a Pro in terms of including (log transformed) `shucked_weight`, accuracy improves, $R^2$ increases. The first obvious downside is a loss of interpretability. With only two predictor variables the model is still very simple and straightforward but it would be hard to compete with simple linear regression when it comes to explaining and creating visualizations. The other con to the multiple linear regression relates to possibility of overfitting, which would require doing some train vs. test calculations. Depends on the data but my initial thought is that adding a single variable won't contribute much to the chance of overfitting but one never knows. Since the correlation between these two variables, reported in problem 1, was very high (around 0.9) it may not be worth including the new predictor in the model.
+

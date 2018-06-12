@@ -1,0 +1,153 @@
+*** 21:57:52:093438+ 30 number rows from "matching" screenshot is offset to right in below data
+
+
+[joe@localhost kafka_2.11-0.8.2.2]$ python /home/joe/proj/lec08/p3_producer.py
+Initiating random numbers 
+21:56:15:899602 - Random number created by P3 PRODUCER: 7
+21:56:16:902052 - Random number created by P3 PRODUCER: 10
+21:56:17:903639 - Random number created by P3 PRODUCER: 10
+21:56:18:905210 - Random number created by P3 PRODUCER: 2
+21:56:19:906382 - Random number created by P3 PRODUCER: 3
+21:56:20:911012 - Random number created by P3 PRODUCER: 1
+21:56:21:913091 - Random number created by P3 PRODUCER: 6
+21:56:22:914532 - Random number created by P3 PRODUCER: 3
+21:56:23:916224 - Random number created by P3 PRODUCER: 5
+21:56:24:917375 - Random number created by P3 PRODUCER: 9
+21:56:25:918498 - Random number created by P3 PRODUCER: 4
+21:56:26:920268 - Random number created by P3 PRODUCER: 6
+21:56:27:921664 - Random number created by P3 PRODUCER: 5
+21:56:28:923251 - Random number created by P3 PRODUCER: 1
+21:56:29:924905 - Random number created by P3 PRODUCER: 5
+21:56:30:926504 - Random number created by P3 PRODUCER: 8
+21:56:31:928549 - Random number created by P3 PRODUCER: 8
+21:56:32:930659 - Random number created by P3 PRODUCER: 6
+21:56:33:932323 - Random number created by P3 PRODUCER: 9
+21:56:34:933796 - Random number created by P3 PRODUCER: 3
+21:56:35:935317 - Random number created by P3 PRODUCER: 8
+21:56:36:937594 - Random number created by P3 PRODUCER: 1
+21:56:37:939203 - Random number created by P3 PRODUCER: 9
+21:56:38:940277 - Random number created by P3 PRODUCER: 5
+21:56:39:941461 - Random number created by P3 PRODUCER: 4
+21:56:40:943103 - Random number created by P3 PRODUCER: 9
+21:56:41:945114 - Random number created by P3 PRODUCER: 5
+21:56:42:946289 - Random number created by P3 PRODUCER: 7
+21:56:43:948409 - Random number created by P3 PRODUCER: 6
+21:56:44:949415 - Random number created by P3 PRODUCER: 5
+21:56:45:950512 - Random number created by P3 PRODUCER: 3
+21:56:46:953865 - Random number created by P3 PRODUCER: 3
+21:56:47:955767 - Random number created by P3 PRODUCER: 5
+21:56:48:957417 - Random number created by P3 PRODUCER: 7
+21:56:49:958845 - Random number created by P3 PRODUCER: 4
+21:56:50:960386 - Random number created by P3 PRODUCER: 6
+21:56:51:962192 - Random number created by P3 PRODUCER: 7
+21:56:52:963634 - Random number created by P3 PRODUCER: 4
+21:56:53:965194 - Random number created by P3 PRODUCER: 7
+21:56:54:966333 - Random number created by P3 PRODUCER: 6
+21:56:55:967936 - Random number created by P3 PRODUCER: 5
+21:56:56:969536 - Random number created by P3 PRODUCER: 6
+21:56:57:971426 - Random number created by P3 PRODUCER: 7
+21:56:58:974225 - Random number created by P3 PRODUCER: 4
+21:56:59:975363 - Random number created by P3 PRODUCER: 7
+21:57:00:977027 - Random number created by P3 PRODUCER: 7
+21:57:01:978559 - Random number created by P3 PRODUCER: 5
+21:57:02:980174 - Random number created by P3 PRODUCER: 3
+21:57:03:981216 - Random number created by P3 PRODUCER: 6
+21:57:04:982365 - Random number created by P3 PRODUCER: 5
+21:57:05:983490 - Random number created by P3 PRODUCER: 5
+21:57:06:985154 - Random number created by P3 PRODUCER: 5
+21:57:07:986653 - Random number created by P3 PRODUCER: 7
+21:57:08:988256 - Random number created by P3 PRODUCER: 5
+21:57:09:989296 - Random number created by P3 PRODUCER: 1
+21:57:10:990283 - Random number created by P3 PRODUCER: 7
+21:57:11:991482 - Random number created by P3 PRODUCER: 5
+21:57:12:993114 - Random number created by P3 PRODUCER: 10
+21:57:13:994636 - Random number created by P3 PRODUCER: 1
+21:57:14:996290 - Random number created by P3 PRODUCER: 10
+21:57:15:997389 - Random number created by P3 PRODUCER: 6
+21:57:16:998820 - Random number created by P3 PRODUCER: 3
+21:57:18:000845 - Random number created by P3 PRODUCER: 8
+21:57:19:003224 - Random number created by P3 PRODUCER: 4
+21:57:20:005309 - Random number created by P3 PRODUCER: 5
+21:57:21:006417 - Random number created by P3 PRODUCER: 2
+21:57:22:007600 - Random number created by P3 PRODUCER: 8
+21:57:23:009673 - Random number created by P3 PRODUCER: 4
+21:57:24:011233 - Random number created by P3 PRODUCER: 8
+21:57:25:026255 - Random number created by P3 PRODUCER: 2
+21:57:26:048484 - Random number created by P3 PRODUCER: 2
+21:57:27:049483 - Random number created by P3 PRODUCER: 7
+21:57:28:050211 - Random number created by P3 PRODUCER: 6
+21:57:29:051279 - Random number created by P3 PRODUCER: 4
+21:57:30:053003 - Random number created by P3 PRODUCER: 7
+21:57:31:054329 - Random number created by P3 PRODUCER: 6
+21:57:32:055469 - Random number created by P3 PRODUCER: 6
+21:57:33:056358 - Random number created by P3 PRODUCER: 1
+21:57:34:058734 - Random number created by P3 PRODUCER: 6
+21:57:35:060231 - Random number created by P3 PRODUCER: 9
+21:57:36:062586 - Random number created by P3 PRODUCER: 2
+21:57:37:064992 - Random number created by P3 PRODUCER: 1
+21:57:38:066574 - Random number created by P3 PRODUCER: 8
+21:57:39:068725 - Random number created by P3 PRODUCER: 4
+21:57:40:070276 - Random number created by P3 PRODUCER: 4
+21:57:41:071437 - Random number created by P3 PRODUCER: 10
+21:57:42:073072 - Random number created by P3 PRODUCER: 6
+21:57:43:075682 - Random number created by P3 PRODUCER: 2
+21:57:44:077304 - Random number created by P3 PRODUCER: 8
+21:57:45:079851 - Random number created by P3 PRODUCER: 2
+21:57:46:081823 - Random number created by P3 PRODUCER: 5
+21:57:47:083486 - Random number created by P3 PRODUCER: 3
+21:57:48:087835 - Random number created by P3 PRODUCER: 9
+21:57:49:089661 - Random number created by P3 PRODUCER: 6
+21:57:50:091190 - Random number created by P3 PRODUCER: 5
+21:57:51:092309 - Random number created by P3 PRODUCER: 5
+					21:57:52:093438 - Random number created by P3 PRODUCER: 8
+					21:57:53:094527 - Random number created by P3 PRODUCER: 1
+					21:57:54:095658 - Random number created by P3 PRODUCER: 10
+					21:57:55:097220 - Random number created by P3 PRODUCER: 8
+					21:57:56:100363 - Random number created by P3 PRODUCER: 9
+					21:57:57:101613 - Random number created by P3 PRODUCER: 5
+					21:57:58:105585 - Random number created by P3 PRODUCER: 10
+					21:57:59:109689 - Random number created by P3 PRODUCER: 7
+					21:58:00:111299 - Random number created by P3 PRODUCER: 3
+					21:58:01:112386 - Random number created by P3 PRODUCER: 7
+					21:58:02:113550 - Random number created by P3 PRODUCER: 1
+					21:58:03:115577 - Random number created by P3 PRODUCER: 3
+					21:58:04:117270 - Random number created by P3 PRODUCER: 2
+					21:58:05:118845 - Random number created by P3 PRODUCER: 3
+					21:58:06:120395 - Random number created by P3 PRODUCER: 4
+					21:58:07:121699 - Random number created by P3 PRODUCER: 1
+					21:58:08:123683 - Random number created by P3 PRODUCER: 2
+					21:58:09:125233 - Random number created by P3 PRODUCER: 7
+					21:58:10:126554 - Random number created by P3 PRODUCER: 8
+					21:58:11:128423 - Random number created by P3 PRODUCER: 7
+					21:58:12:129503 - Random number created by P3 PRODUCER: 7
+					21:58:13:131625 - Random number created by P3 PRODUCER: 8
+					21:58:14:133280 - Random number created by P3 PRODUCER: 8
+					21:58:15:135474 - Random number created by P3 PRODUCER: 3
+					21:58:16:137445 - Random number created by P3 PRODUCER: 5
+					21:58:17:139062 - Random number created by P3 PRODUCER: 1
+					21:58:18:140632 - Random number created by P3 PRODUCER: 3
+					21:58:19:142272 - Random number created by P3 PRODUCER: 3
+					21:58:20:143371 - Random number created by P3 PRODUCER: 8
+					21:58:21:144572 - Random number created by P3 PRODUCER: 9
+21:58:22:145524 - Random number created by P3 PRODUCER: 8
+21:58:23:147522 - Random number created by P3 PRODUCER: 8
+21:58:24:148599 - Random number created by P3 PRODUCER: 2
+21:58:25:150832 - Random number created by P3 PRODUCER: 5
+21:58:26:152588 - Random number created by P3 PRODUCER: 9
+21:58:27:154705 - Random number created by P3 PRODUCER: 6
+21:58:28:156664 - Random number created by P3 PRODUCER: 7
+21:58:29:158226 - Random number created by P3 PRODUCER: 10
+21:58:30:159310 - Random number created by P3 PRODUCER: 3
+21:58:31:201551 - Random number created by P3 PRODUCER: 6
+21:58:32:203226 - Random number created by P3 PRODUCER: 2
+21:58:33:204536 - Random number created by P3 PRODUCER: 8
+21:58:34:206254 - Random number created by P3 PRODUCER: 3
+21:58:35:207376 - Random number created by P3 PRODUCER: 9
+21:58:36:210413 - Random number created by P3 PRODUCER: 6
+21:58:37:212608 - Random number created by P3 PRODUCER: 6
+21:58:38:214867 - Random number created by P3 PRODUCER: 5
+21:58:39:219269 - Random number created by P3 PRODUCER: 6
+21:58:40:220482 - Random number created by P3 PRODUCER: 2
+
+
+

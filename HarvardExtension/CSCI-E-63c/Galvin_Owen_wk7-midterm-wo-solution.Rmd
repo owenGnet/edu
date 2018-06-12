@@ -1,0 +1,1074 @@
+---
+title: "CSCI E-63C Week 7 midterm exam"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(glmnet)
+library(leaps)
+library(ggplot2)
+library(MASS)
+
+library(reshape2)
+library(readr)
+library(cluster)
+library(dplyr)
+# dplyr::select
+
+options(scipen=5)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+The goal of midterm is to apply some of the methods for supervised and unsupervised analysis to a new dataset.  We will work with data characterizing the relationship between wine quality and its analytical characteristics [available at UCI ML repository](https://archive.ics.uci.edu/ml/datasets/Wine+Quality) as well as in this course website on canvas.  The overall goal will be to use data modeling approaches to understand which wine properties influence the most wine quality as determined by expert evaluation.  The output variable in this case assigns wine to discrete categories between 0 (the worst) and 10 (the best), so that this problem can be formulated as classification or regression -- here we will stick to the latter and treat/model outcome as continuous variable.  For more details please see [dataset description available at UCI ML](https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality.names) or corresponding file in this course website on canvas.  Please note that there is another, much smaller, dataset on UCI ML also characterizing wine in terms of its analytical properties -- make sure to use correct URL as shown above, or, to eliminate possibility for ambiguity, the data available on the course website in canvas -- the correct dataset contains several thousand observations. For simplicity, clarity and to decrease your dependency on the network reliability and UCI ML availability you are advised to download data made available in this course website to your local folder and work with this local copy.
+
+There are two compilations of data available under the URL shown above as well as in the course website in canvas -- separate for red and for white wine -- please develop models of wine quality for each of them, investigate attributes deemed important for wine quality in both and determine whether quality of red and white wine is influenced predominantly by the same or different analytical properties (i.e. predictors in these datasets).  Lastly, as an exercise in unsupervised learning you will be asked to combine analytical data for red and white wine and describe the structure of the resulting data -- whether there are any well defined clusters, what subsets of observations they appear to represent, which attributes seem to affect the most this structure in the data, etc.
+
+Finally, as you will notice, the instructions here are terser than in the previous homework assignments. We expect that you use what you've learned in the class to complete the analysis and draw appropriate conclusions based on the data.  All approaches that you are expected to apply here have been exercised in the preceeding weekly assignments -- please feel free to consult your submissions and/or official solutions as to how they have applied to different datasets.  As always, if something appears to be unclear, please ask questions -- we may change to private mode those that in our opinion reveal too many details as we see fit.
+
+# Sub-problem 1: load and summarize the data (20 points)
+
+Download and read in the data, produce numerical and graphical summaries of the dataset attributes, decide whether they can be used
+for modeling in untransformed form or any transformations are justified, comment on correlation structure and whether some of the predictors suggest relationship with the outcome.
+
+---
+
+> read in the data
+
+```{r }
+
+wine_columns = c('fixed_acidity','volatile_acidity','citric_acid','residual_sugar','chlorides','free_sulfur_dioxide', 'total_sulfur_dioxide', 'density','pH', 'sulphates', 'alcohol', 'y_quality')
+
+red = read.table('./data/winequality-red.csv', sep=';', header=TRUE, as.is=TRUE, quote='', col.names=wine_columns)
+
+white = read.table('./data/winequality-white.csv', sep=';', header=TRUE, as.is=TRUE, quote='', col.names=wine_columns)
+
+```
+
+> produce numerical (summaries)
+
+Call `summary` on red to get some summary statistics on the red wines:
+```{r }
+summary(red)
+```
+
+And then on the white wines dataset:
+```{r }
+summary(white)
+```
+
+`str` on both to confirm datatypes and see dimensions of each dataset:
+```{r }
+str(red)
+str(white)
+```
+
+> and graphical summaries of the dataset attributes
+
+```{r }
+oldPar <- par(mfrow=c(1:2), ps=14)
+x_range = c(0,10)
+y_range = c(1,2000)
+red_col ='#B23714'
+white_col ='#F8E8AD'
+hist(red$y_quality, main='red wines, quality scores', col=red_col, xlim=x_range, xlab='quality score', ylim=y_range)
+hist(white$y_quality, main='white wines, quality scores', col=white_col, xlim=x_range, xlab='quality score', ylim=y_range)
+
+```
+
+Dataset description states the quality scores range from 0 to 10 and that there are more "ordinary" wines than excellent or poor ones, histogram confirms. Plot them on the same scale to emphasize the disparity in size of datasets, don't think much information is lost by reducing the bar sizes on the red wines.
+
+
+### red wine boxplots
+
+```{r }
+# after looking at the distribution of quality scores, decide 5/6/7 represent "ordinary" wines = 2
+# anything below that is a 1 and the better ones, > 7, get a 3
+wine_binner = function(x){ifelse(x<5, 1, ifelse(x<8, 2, 3))}
+red_quality_bins = sapply(red$y_quality, wine_binner)
+
+oldpar=par(mfrow=c(1,2))
+for ( i in 1:11 ) {
+  boxplot(red[[i]] ~ red_quality_bins,
+  col=c('gray','purple',red_col),
+  main=names(red)[i])
+}
+
+```
+
+Above are some box plots for each of the predictor variables against `quality`, where the `y_quality` values have somewhat arbitrarily been divided into three bins:  
+* poor for scores < 5, in gray  
+* ordinary for scores of 5/6/7, purple  
+* excellent for scores > 7, maroon  
+
+These red wine boxplots imply a few relationships:  
+* higher values for `fixed_acidity`, `citric_acid`, `sulphates`, and most distinctly, `alcohol`, are associated with higher quality wines. `alcohol` aside, lower values for those same variables correspond with lower wine `y_quality` scores.  
+* An inverse relationship to the above, lower values ~ high quality, is displayed for `volatile_acidity`, `density`, and `pH`.  
+* The variables `residual_sugar`, `chlorides`, `free_sulfur_dioxide`, and `total_sulfur_dioxide` appear to be independent of `y_quality` scores.  
+
+Looking at some of the stronger correlations, to improve a glass of red wine maybe add lemon juice to increase `citric_acid`/decrease `pH` levels, then drop in a shot of vodka to increase `alcohol` levels. (Ha ha, I'm not a wine drinker, guessing that won't work so well.)
+
+
+### on to white wine boxplots
+
+```{r }
+
+white_quality_bins = sapply(white$y_quality, wine_binner)
+
+oldpar=par(mfrow=c(1,2))
+for ( i in 1:11 ) {
+  boxplot(white[[i]] ~ white_quality_bins,
+  col=c('gray','goldenrod',white_col),
+  main=names(white)[i])
+}
+```
+
+The story for white wines changes a bit:  
+* the previous relationships for `fixed_acidity`, `citric_acid`, `pH`, and `sulphates` are no longer apparent  
+* the negative correlation between `volatile_acidity` and quality is still there, but to a lesser degree  
+* there now appears to be weak correspondence involving `free_sulfur_dioxide`, increased levels resulting in higher quality (or at least less-poor quality) wine  
+* correlations for remaining variables appear mostly unchanged. Notably, the relationship between higher `alcohol` levels leading to higher quality wine scores remains just as pronounced as with red wine.   
+
+
+
+> decide whether they (dataset attributes) can be used for modeling in untransformed form or any transformations are justified
+
+For the first step in evaluating the source data sets I'm going to look at `red` and:  
+1. create a multiple linear regression model on the 11 predictor variables vs. `y_quality` based on different "versions" of the data  
+2. create diagnostic plots of the above models  
+
+For `1.` above, the models will be based on:  
+1. data as supplied  
+2. data with all values log-transformed  
+3. data with all predictor variables log-transformed, leaving `y_quality` in its original state  
+
+### raw red data
+```{r }
+lm_red_raw = lm(y_quality~., red)
+summary(lm_red_raw)
+
+oldpar=par(mfrow=c(2,2))
+plot(lm_red_raw)
+```
+
+### red, all variables log-transformed
+```{r }
+# log transform all columns
+red_loggy_all = log(red+1)
+lm_red_loggy_all = lm(y_quality~., red_loggy_all)
+summary(lm_red_loggy_all)
+oldpar=par(mfrow=c(2,2))
+plot(lm_red_loggy_all)
+
+```
+
+
+### red, predictors log-transformed
+```{r }
+# log transform all the predictor columns
+red_loggy_preds = cbind(log(red[,-12]+1), red[,12])
+colnames(red_loggy_preds) = wine_columns
+lm_red_loggy_preds = lm(y_quality~., red_loggy_preds)
+summary(lm_red_loggy_preds)
+oldpar=par(mfrow=c(2,2))
+plot(lm_red_loggy_preds)
+
+```
+
+### Analysis
+
+Short version:  
+* the diagnostic plots pretty much look all the same between the models, so no reason to log transform
+
+Longer version:  
+* first of all, the plots for raw data "look good", so no reason to try an alternate transform, e.g. `sqrt`, `log` (and in the interests of time...)  
+* the residuals plots for all three look the same, mostly straight line through the data implies linearity in the predictors vs. outcome.  
+* Q-Q, raw-data & log-predictors look the same, in a good way, meaning there appear to be normally distributed deviations. The log-all model shows a greater divergence from the diagonal line in the lower left compared to the other two, indicating a poorer fit.  
+* Scale Location is pretty much identical for all models  
+* the final plot, Residuals vs. Leverage, has good results for the raw data, even distribution of points, the red line is almost perfectly horizontal. The other two models show the same outlier(s) at the far right pulling the red line downwards. If we were to proceed with these versions we should consider, after due analysis, removing the one or two outliers at the far right.
+
+As a sanity check, review the results of the `summary` on the red wine data set, and decide to output the `min/max` vaues for all the variables, both raw and log-transformed versions:
+
+```{r }
+rbind(apply(red, 2, min), apply(red, 2, max))
+
+rbind(apply(red_loggy_all, 2, min), apply(red_loggy_all, 2, max))
+
+```
+
+Basically, the range of values in the original data set don't appear too extreme to begin with, e.g. there isn't one variable with values from 1 to 10 and another 1 to 10,000. Comparing to the log-transformed versions reinforces the idea that there isn't _too_ much transformation going on.  
+According to all three of the `lm` models, the most important variables are `volatile_acidity`, `chlorides`, `total_sulfur_dioxide`, `sulphates`, and `alcohol`. Which, `alcohol` aside, disagrees with my eyeball analysis of the boxplots I created based on "binned" quality. Either way, look at the range of values for three of the variables that my boxplots + my models both agree are influential (`volatile_acidity`, `sulphates`, `alcohol` and the range of those is especially small, i.e. the log-transormation doesn't result in a large change in the values.  
+
+At this point my default for the `white` dataset will also be to stick with the original data, going to conduct some brief analysis below. (And I now realize I should have concentrated my more in-depth research on `white` instead of `red` as there are 3x the amount of data available and so any anylysis would have been more likely to be accurate.)  
+In the interests of time, a quick `lm` on the original data + some diagnositic plots will hopefully confirm there is no reason to diverge from using untransformed variables.
+
+### raw white data
+```{r }
+lm_white_raw = lm(y_quality~., white)
+summary(lm_white_raw)
+
+oldpar=par(mfrow=c(2,2))
+plot(lm_white_raw)
+```
+
+Everything looks good, except for the final Residuals vs. Leverage, which is a bit scary. Because of that, worth straying from "brief" review and instead dive a little deeper = look at the 2 log-transformed versions.  
+
+```{r }
+# log transform all columns
+white_loggy_all = log(white+1)
+lm_white_loggy_all = lm(y_quality~., white_loggy_all)
+oldpar=par(mfrow=c(2,2))
+plot(lm_white_loggy_all)
+
+# log transform all the predictor columns
+white_loggy_pwhites = cbind(log(white[,-12]+1), white[,12])
+colnames(white_loggy_pwhites) = wine_columns
+lm_white_loggy_pwhites = lm(y_quality~., white_loggy_pwhites)
+oldpar=par(mfrow=c(2,2))
+plot(lm_white_loggy_pwhites)
+```
+
+Ok, good news in that these plots don't show any obvious improvements, sticking with orig data for `white` as well.  
+
+Not sure if I'll have time to fully evaluate but all three sets of plots indicate a potential problem with outlier(s). My intutition is that the data point on the upper-left of the Residuals vs. Fitted is the same one that throws off the Leverage chart, where it (or another data point) appears at the upper right. And that same point `2782` appears to an outlier on the Q-Q and Scale Location charts. The divergence of this point, from all other 4,897 observations, seems extreme enough that it would be safe to be considered an outlier and so eliminated.  
+
+### raw white data - outlier
+```{r }
+lm_white_raw_clean = lm(y_quality~., white[-2782,])
+summary(lm_white_raw_clean)
+
+oldpar=par(mfrow=c(2,2))
+plot(lm_white_raw_clean)
+```
+
+Ah, much better. Going to indeed remove that outlier and create new model based on that cleaner `white` dataset. Also, re-create the `red` model with a new name based on the untransformed data, data is small enough that memory isn't much of a concern. Also, do a `summary` on the `lm()` model for updated `white` dataset.
+
+```{r }
+lm_red = lm(y_quality~., red)
+white = white[-2782,]
+lm_white = lm(y_quality~., white)
+summary(lm_white)
+```
+
+
+> comment on correlation structure and whether some of the predictors suggest relationship with the outcome.
+
+Produce a pair-wise plot of predictor variables to observe correlations among `red` predictors:
+
+```{r }
+
+#palette(rainbow(3, alpha = 0.5))
+#pairs(data[2:8], pch=19, cex=0.4, col=(ceiling(data$y_rings/5)), main='colored by y_rings value, three bins')
+pairs(red[1:11], pch=19, cex=0.4, col=red$y_quality, main='colored by y_quality')
+
+
+```
+
+Rather busy and need to enlarge image to interpret but there do appear to be multiple variables correlated with one another, among the more notable pairings:  
+* `fixed_acidity` has positive correlation with `citric_acid` and `density`, negative with `pH` 
+* `citric_acid` similar to above, i.e. beyond `fixed_acidity`, positive correlation with  `density`, negative with `pH`  
+* `free_sulfur_dioxide` positive with `total_sulfur_dioxide` (unsurprising)  
+* notably `alcohol`, which has figured prominently before, appears to be mostly uncorrelated, positive weak relationship with `density`  
+
+
+As for correlation of predictors with outcome, run separate plots for outcome (`y_quality`) vs. predictors likely to have correlation with said outcome. For the `red` regression model, `volatile_acidity`, `chlorides`, `total_sulfur_dioxide`, `sulphates`, and `alcohol` had `***` indicating they were important. The `white` model included below, which only partially overalps with the same for `red`:  
+* `fixed_acidity`, `volatile_acidity`, `residual_sugar`, `free_sulfur_dioxide`, `density`, `pH`, `sulphates`, `alcohol`  
+
+Create some simple plots of the overlapping variables, along with a simple linear regression against `y_quality` in order to draw a line: `volatile_acidity`,  `sulphates`, `alcohol`
+
+### red wines, plot select variables vs. outcome 
+```{r }
+some_vars = c('volatile_acidity',  'sulphates', 'alcohol')
+#oldpar=par(mfrow=c(1,3))
+for (one_var in some_vars){
+  plot(red[,c(one_var,'y_quality')], main=paste0('red wines, outcome (y_quality) vs. ', one_var))
+  abline(lm(y_quality~eval(as.symbol(one_var)), red), col=red_col)
+}
+
+```
+
+The above plots support existence of relationships between each of the three selected variables and the outcome variable. The first, `volatile_acidity`, has a pronounced negative correlation with `y_quality` of red wine while both `sulphates` and `alcohol` show positive correlation, with higher values in each of those predictors leading to higher `y_quality` scores.
+
+
+### white wines, plot select variables vs. outcome 
+```{r }
+for (one_var in some_vars){
+  plot(white[,c(one_var,'y_quality')], main=paste0('white wines, outcome (y_quality) vs. ', one_var))
+  abline(lm(y_quality~eval(as.symbol(one_var)), white), col='tan')
+}
+```
+
+With the `white` wine plots we see the same relationships between `volatile_acidity` and `alcohol`, with the shallower `lm` lines indicating the relationships here are somewhat weaker than in the `red` dataset. The positive `sulphates` correlation is there also, but only slightly.
+
+
+# Sub-problem 2: choose optimal models by exhaustive, forward and backward selection (20 points)
+
+Use `regsubsets` from library `leaps` to choose optimal set of variables for modeling wine quality for red and white wine (separately), describe differences and similarities between attributes deemed important in each case.
+
+---
+
+> Use `regsubsets` from library `leaps` to choose optimal set of variables for modeling wine quality for red and white wine (separately) describe differences and similarities between attributes deemed important in each case
+
+First, generate `regsubsets` related plots for `red` dataset, run subset selection through all available methods: exhaustive search, forward selection, backward selection, and sequential replacement.   
+### NOTE: only noticed after most of my analysis that the problem does not include `sequential replacement` as one of the methods to test with. Going to leave in for now as its inclusion isn't doing any harm, will update my text later, time permitting.  
+
+
+### red wine and regsubsets
+```{r }
+summaryMetrics <- NULL
+whichAll_red <- list()
+my_methods = c('exhaustive', 'backward', 'forward', 'seqrep')
+for ( myMthd in my_methods ) {
+  method_metrics = NULL
+  rsRes <- regsubsets(y_quality~., red, method=myMthd, nvmax=ncol(red)-1)
+  summRes <- summary(rsRes)
+  whichAll_red[[myMthd]] <- summRes$which
+  for ( metricName in c('rsq','rss','adjr2','cp','bic') ) {
+    summaryMetrics <- rbind(summaryMetrics,
+      data.frame(method=myMthd,metric=metricName,
+                nvars=1:length(summRes[[metricName]]),
+                value=summRes[[metricName]]))
+    method_metrics = rbind(method_metrics,
+      data.frame(method=myMthd,metric=metricName,
+                nvars=1:length(summRes[[metricName]]),
+                value=summRes[[metricName]]))
+    
+  }
+}
+ggplot(summaryMetrics,aes(x=nvars,y=value,shape=method,colour=method)) + geom_path() + geom_point() + facet_wrap(~metric,scales='free') +   theme(legend.position='top')
+```
+
+Aside from some obvious aberrations from the `sequential replacement` approach at nvar=10, all four searches came up with similar results. Looking at the indvidual metrics, and the variable count at which gains level off, I would say `rsq`, `adr2`, `cp` all agree on nvar=7, `rss` either 7 or 8, and `bic` at 6. All things considered here I think 7 would be a reasonable variable count to go with. 
+
+### white wine and regsubsets
+```{r }
+summaryMetrics <- NULL
+whichAll_white <- list()
+my_methods = c('exhaustive', 'backward', 'forward', 'seqrep')
+for ( myMthd in my_methods ) {
+  method_metrics = NULL
+  rsRes <- regsubsets(y_quality~., white, method=myMthd, nvmax=ncol(white)-1)
+  summRes <- summary(rsRes)
+  whichAll_white[[myMthd]] <- summRes$which
+  for ( metricName in c('rsq','rss','adjr2','cp','bic') ) {
+    summaryMetrics <- rbind(summaryMetrics,
+      data.frame(method=myMthd,metric=metricName,
+                nvars=1:length(summRes[[metricName]]),
+                value=summRes[[metricName]]))
+    method_metrics = rbind(method_metrics,
+      data.frame(method=myMthd,metric=metricName,
+                nvars=1:length(summRes[[metricName]]),
+                value=summRes[[metricName]]))
+  }
+}
+ggplot(summaryMetrics,aes(x=nvars,y=value,shape=method,colour=method)) + geom_path() + geom_point() + facet_wrap(~metric,scales='free') +   theme(legend.position='top')
+```
+
+Now we see some real disagreement in the search method results. `exhaustive` and `forward` are in agreement but at lower variable counts the metrics reported by `backward selection` are poorer, beginning to only match the other search methods once nvar gets to 6 or higher. As with the `red` wine, `sequential replacement` shows a short lived decrease in accuracy, this time at nvar=8, which gets better at nvar=9, before matching with other methods at nvar=10. Since the dataset was small enough that `exhaustive` subset could be performed, and its results agree with `forward`/`backward` at point before metric gains level off it I think it makes sense to more or less ignore `sequential replacement` results - that one shows dip at nvar=8, which is the variable count at which the other search methods report best results.  
+
+At this point the results would recommend a `red` wine model with 7 variables vs. 8 for `white` wine dataset.  
+Next will be examining the actual variables selected by the search methods at each nvar count.
+
+### variable selection, red
+```{r }
+#TODO: 2x1 charts to make bigger?
+# at this point realize we don't need/want the seqrep results, skip it in the results
+old.par <- par(mfrow=c(2,2),ps=10,mar=c(5,7,2,1))
+for ( myMthd in names(whichAll_red[-length(whichAll_red)]) ) {
+  image(1:nrow(whichAll_red[[myMthd]]),
+        1:ncol(whichAll_red[[myMthd]]),
+        whichAll_red[[myMthd]],xlab='N(vars)',ylab='',
+        xaxt='n',yaxt='n',breaks=c(-0.5,0.5,1.5),
+        col=c('white',red_col),main=myMthd)
+  axis(1,1:nrow(whichAll_red[[myMthd]]),rownames(whichAll_red[[myMthd]]))
+  axis(2,1:ncol(whichAll_red[[myMthd]]),colnames(whichAll_red[[myMthd]]),las=2)
+  abline(v=7, col='blue')
+}
+```
+
+Nice to see that there appears to be full agreement at each variable count as to which variables to include. More specifically the blue line at nvar=7 indicates agreement at the nvar selected by earlier search methods on `red` dataset.
+
+### variable selection, white
+```{r }
+
+old.par <- par(mfrow=c(2,2),ps=10,mar=c(5,7,2,1))
+for ( myMthd in names(whichAll_white[-length(whichAll_white)]) ) {
+  image(1:nrow(whichAll_white[[myMthd]]),
+        1:ncol(whichAll_white[[myMthd]]),
+        whichAll_white[[myMthd]],xlab='N(vars)',ylab='',
+        xaxt='n',yaxt='n',breaks=c(-0.5,0.5,1.5),
+        col=c('white',white_col),main=myMthd)
+  axis(1,1:nrow(whichAll_white[[myMthd]]),rownames(whichAll_white[[myMthd]]))
+  axis(2,1:ncol(whichAll_white[[myMthd]]),colnames(whichAll_white[[myMthd]]),las=2)
+    abline(v=8, col='blue')
+}
+```
+
+Now the best-nvar blue line is at 8 and we can see the specific variables selected at that variable count is the same set throughout each search pattern. Looking at earlier variable counts there are definitely some differences, e.g. `alcohol` goes in and out in `exhaustive` and doesn't come into play in `backward` selection until n=8.
+
+Comparing variable selection in `red` vs. `white` isn't 100% straightforward since the ultimate best-nvar counts is different but we can certainly examine:  
+
+* at nvar=7, best for `red`  
+    + `red`, the 4 skipped variables: `density`, `residual_sugar`, `citric_acid`, `fixed_acidity`  
+    + `white`, the skipped variables only half-overlap with `red` - `citric_acid` and `fixed_acidity` are also not selected but the other two are different, `chlorides` + `total_sulfur_dioxide`  
+    
+* at nvar=8, best for `white`  
+    + `white`, the 3 variables not selected: `total_sulfur_dioxide`, `chlorides`, `citric_acid`. The newly included variable vs. nvar=7 differs for each of the three search methods  
+    + `red`, the newly included variable vs. nvar=7 is `citric_acid`  
+    
+* in terms of selection progression  
+    + `red`, for all 3 search methods, `alcohol` picked first, followed by `volatile_acidity` and `sulphates` in that order   
+    + `white`, as discussed earlier the pattern has significant deviation across the three methods, and it is only by nvar=8 that they agree on the set to include.  
+
+
+# Sub-problem 3: optimal model by cross-validation (25 points)
+
+Use cross-validation (or any other resampling strategy of your choice) to estimate test error for models with different numbers of variables.  Compare and comment on the number of variables deemed optimal by resampling versus those selected by `regsubsets` in the previous task.  Compare resulting models built separately for red and white wine data.
+
+---
+
+> Use cross-validation (or any other resampling strategy of your choice) to estimate test error for models with different numbers of variables.  
+
+Create a function for use with both wine datasets
+
+```{r }
+# update function from week 5 solutions to handle either red or white (y_quality is hard-coded within)
+xvalMSEregsubsetsWine <- function(data, nTries=30, kXval=5) {
+  retRes <- NULL
+  for ( iTry in 1:nTries ) {
+    xvalFolds <- sample(rep(1:kXval, length.out=nrow(data)))
+    # Try each method available in regsubsets
+    # to select the best model of each size, skip 'seqrep' to match with earlier resuls
+    for ( jSelect in c("exhaustive", "backward", "forward") ) {
+      mthdTestErr2 <- NULL
+      mthdTrainErr2 <- NULL
+      mthdTestFoldErr2 <- NULL
+      for ( kFold in 1:kXval ) {
+        rsTrain <- regsubsets(y_quality~., data[xvalFolds!=kFold,], nvmax=ncol(data)-1, method=jSelect)
+        # Calculate test error for each set of variables using predict.regsubsets implemented above:
+        nVarTestErr2 <- NULL
+        nVarTrainErr2 <- NULL
+        for ( kVarSet in 1:(ncol(data)-1) ) {
+          # make predictions for given number of variables and cross-validation fold:
+          kCoef <- coef(rsTrain,id=kVarSet)
+          testPred <- model.matrix(y_quality~.,data[xvalFolds==kFold,])[,names(kCoef)] %*% kCoef
+          nVarTestErr2 <- cbind(nVarTestErr2,(testPred-data[xvalFolds==kFold,"y_quality"])^2)
+          trainPred <- model.matrix(y_quality~.,data[xvalFolds!=kFold,])[,names(kCoef)] %*% kCoef
+          nVarTrainErr2 <- cbind(nVarTrainErr2,(trainPred-data[xvalFolds!=kFold,"y_quality"])^2)
+        }
+        # accumulate training and test errors over all cross-validation folds:
+        mthdTestErr2 <- rbind(mthdTestErr2,nVarTestErr2)
+        mthdTestFoldErr2 <- rbind(mthdTestFoldErr2,colMeans(nVarTestErr2))
+        mthdTrainErr2 <- rbind(mthdTrainErr2,nVarTrainErr2)
+      }
+      # add to data.frame for future plotting:
+      retRes <- rbind(retRes,
+                data.frame(sim=iTry,sel=jSelect,vars=1:ncol(nVarTrainErr2),mse=colMeans(mthdTrainErr2),trainTest="train"),
+                data.frame(sim=iTry,sel=jSelect,vars=1:ncol(nVarTrainErr2),mse=colMeans(mthdTestErr2),trainTest="test"))
+    }
+  }
+  retRes
+}
+#df2 = data.frame(xvalMSEregsubsetsWine(data=red, 10 ,kXval=2), xval="2-fold")
+#df2a = df2[which(df2$vars!=1),]
+#ggplot(df2a, aes(x=factor(vars),y=mse,colour=sel)) + geom_boxplot()+facet_wrap(~trainTest+xval)
+```
+
+
+### 5-fold, 10-fold cross validation on red dataset
+```{r }
+# plot MSEs by training/test, number of variables, reduce nTries to 20 in interest of expediency, and only 5/10 folds
+dfTmpRed <- rbind(data.frame(xvalMSEregsubsetsWine(data=red, nTries=20, kXval=5), xval="5-fold"),
+              data.frame(xvalMSEregsubsetsWine(data= red, nTries=20, kXval=10), xval="10-fold"))
+ggplot(dfTmpRed,aes(x=factor(vars),y=mse,colour=sel)) + geom_boxplot()+facet_wrap(~trainTest+xval)
+# for viz testing, runs quickly:
+#ggplot(data.frame(xvalMSEregsubsetsWine(data=red, 10 ,kXval=2), xval="2-fold"),
+#       aes(x=factor(vars),y=mse,colour=sel)) + geom_boxplot()+facet_wrap(~trainTest+xval)
+```
+
+Cross-validation is probably the only time so far I've run into significant calculation durations, though all things considered it isn't too much. Even so I've already reduced `nTries` to 20 and skipped the 2-fold validation used in other examples. 
+
+Now for cross-validation on the `white` dataset.
+
+### 5-fold, 10-fold cross validation on white dataset
+```{r }
+# plot MSEs by training/test, number of variables, reduce nTries to 20 in interest of expediency, and only 5/10 folds
+dfTmpWhite <- rbind(data.frame(xvalMSEregsubsetsWine(data=white, nTries=20, kXval=5), xval="5-fold"),
+              data.frame(xvalMSEregsubsetsWine(data=white, nTries=20, kXval=10), xval="10-fold"))
+ggplot(dfTmpWhite,aes(x=factor(vars),y=mse,colour=sel)) + geom_boxplot()+facet_wrap(~trainTest+xval)
+# for viz testing, runs quickly:
+#ggplot(data.frame(xvalMSEregsubsetsWine(data=white, 10 ,kXval=2), xval="2-fold"),
+#       aes(x=factor(vars),y=mse,colour=sel)) + geom_boxplot()+facet_wrap(~trainTest+xval)
+```
+
+
+
+Reviewing above outputs I feel the plots above are too squashed for ready eyeball appraisal and since nvar=1 has the highest MSE by far in both datsets (which of course is the root of the problem), I'm going to regenerate those initial plots with versions that only display nvar=2 through nvar=11 so that the y scale is narrower. First `red` and then `white`.  
+**NOTE:** The plot zooming winds up not having a large effect for either dataset but results are marginally more interpretable than they had been, so those are what I'll analyze.
+
+### 5-fold, 10-fold cross validation on red dataset, nvar > 1
+```{r }
+# plot MSEs by training/test, number of variables, reduce nTries to 20 in interest of expediency, and only 5/10 folds
+# cut out "number of vars = 1" from the display
+ggplot(dfTmpRed[which(dfTmpRed$vars!=1),] ,aes(x=factor(vars),y=mse,colour=sel)) + geom_boxplot()+facet_wrap(~trainTest+xval) + ggtitle('red wines, MSE vs. variable count') + theme(plot.title = element_text(hjust = 0.5))
+```
+
+> Compare and comment on the number of variables deemed optimal by resampling versus those selected by `regsubsets` in the previous task.  
+
+Reviewing above:  
+
+* for 5-fold the lowest test MSE is at either nvar=6 or nvar=7
+  + nvar=6, all 3 methods show low MSE, would need to look at raw numbers to compare vs. nvar=7  to see if lowest average across all three  
+  + nvar=7, mean test MSE for `backwards`, in green, increases a bit vs. nvar=6 and the other two methods appear to be unchanged. In the run I'm looking at for this text it looks like there could be a single outlier for `backwards`, pulling the mean MSE up a bit  
+* 10-fold, nvar=7 definitely appears to produce lowest mean test MSE
+  + `backwards` results at nvar=7 are higher than the other two methods but still lower than same method at nvar=6 (or, of course, nvar=8)  
+* in Problem 2 the diagnostic plots for `red` had, aside from `bic` indicated n=7 was optimal (`bic` plot for all search methods indicated nvar=6 was best).  
+
+
+On to `white`, similar approach to zoom in on the data by skipping nvar=1. 
+
+### 5-fold, 10-fold cross validation on white dataset, nvar > 1
+```{r }
+# cut out "number of vars = 1" from the display
+ggplot(dfTmpWhite[which(dfTmpWhite$vars!=1),] ,aes(x=factor(vars),y=mse,colour=sel)) + geom_boxplot() + facet_wrap(~trainTest+xval) + ggtitle('white wines, MSE vs. variable count') + theme(plot.title = element_text(hjust = 0.5))
+```
+
+Reviewing `white` MSE plots:  
+
+* much more straightforward than `red` - both 5-fold and 10-fold cross-validation say nvar=8 produces lowest mean test MSE  
+* with 10-fold the improvement vs. nvar=9 isn't as evident as it is with 5-fold, but it is still present  
+* in Problem 2 the `white` diagnostic plots selected 8 as the best variable count, so again this dataset produces more consisten results than was happening with `red`  
+
+> Compare resulting models built separately for red and white wine data.
+
+For `red`, favor I think nvar=7 winds up being the optimal model while for `white` the answer is even more clear cut at best variable count = 8.  
+
+Run some R to print out what those low mean test MES values are, both at 5-fold and 10-fold.  
+First `red`: 
+
+```{r }
+test_mse_n7_5f_mean_red = filter(dfTmpRed, trainTest=='test', vars==7, xval=='5-fold') %>% 
+  dplyr::select(mse) %>% 
+  summarize(mean_mse = mean(mse, na.rm = TRUE))
+test_mse_n7_10f_mean_red = filter(dfTmpRed, trainTest=='test', vars==7, xval=='10-fold') %>% 
+  dplyr::select(mse) %>% 
+  summarize(mean_mse = mean(mse, na.rm = TRUE))
+print(paste0('red wines, nvar=7, 5-fold mean test MSE ', test_mse_n7_5f_mean_red, ' and 10-fold ', test_mse_n7_10f_mean_red))
+```
+
+And `white`:
+
+```{r }
+test_mse_n8_5f_mean_white = filter(dfTmpWhite, trainTest=='test', vars==8, xval=='5-fold') %>% 
+  dplyr::select(mse) %>% 
+  summarize(mean_mse = mean(mse, na.rm = TRUE))
+test_mse_n8_10f_mean_white = filter(dfTmpWhite, trainTest=='test', vars==8, xval=='10-fold') %>% 
+  dplyr::select(mse) %>% 
+  summarize(mean_mse = mean(mse, na.rm = TRUE))
+print(paste0('white wines, nvar=8, 5-fold mean test MSE ', test_mse_n8_5f_mean_white, ' and 10-fold ', test_mse_n8_10f_mean_white))
+```
+
+More data (more observations) for `white` dataset does not result in lower test MSE vs. `red`, but one imagines it would be even higher if there weren't as many rows as there are, i.e. if the observation count were reduced to what was provided in the `red` dataset.
+
+
+# Sub-problem 4: lasso/ridge (25 points)
+
+Use regularized approaches (i.e. lasso and ridge) to model quality of red and white wine (separately).  Compare resulting models (in terms of number of variables and their effects) to those selected in the previous two tasks (by `regsubsets` and resampling), comment on differences and similarities among them. 
+
+---
+
+> Use regularized approaches (i.e. lasso and ridge) to model quality of red and white wine (separately). 
+
+I'll create lasso and ridge models on `red` and discuss, followed by same pattern for `white`.
+
+### lasso, red
+```{r }
+# -1 to get rid of intercept that glmnet knows to include:
+x_red = model.matrix(y_quality~., red)[,-1]
+y_red = red[,'y_quality']
+lasso_fit_red = glmnet(x_red, y_red, alpha=1)
+plot(lasso_fit_red)
+```
+
+Note that regularization increases from right to left - as shrinkage increases more coefficients become zero - associated variables are dropped from the model. Peeking at a head on `lasso_fit_red` seems to indicate `density` is represented by the red diagonal line, which rapidly loses relative weight as $\lambda$ increases and more regularization occurs. During that period while coefficient for `density` is lessening (technically the value is increasing at it starts with a relatively large negative value and moves toward 0), which is the right 3/4 of above plot, nvar remains at 11. Then once `density` zeroes out the remaining variables appear to converge on zero relatively rapidly - but that is at least partially an artifact of using default $\lambda$ values.  
+
+By submitting a custom range of $\lambda$ values we can get a more clear cut picture on when, and at which nvar count, the coefficients for certain variables head toward zero.
+
+```{r }
+rng = 10^((-50:10)/20)
+lasso_fit_red2 = glmnet(x_red, y_red, alpha=1, lambda=rng)
+plot(lasso_fit_red2)
+```
+
+Next is the output of `cv.glmnet`, showing averages and variation in MSE values under cross-validation for select values of $\lambda$ (X axis is the log of the input $\lambda$ value):
+
+```{r }
+cv_lasso_fit_red = cv.glmnet(x_red, y_red, alpha=1)
+plot(cv_lasso_fit_red)
+```
+
+The two vertical lines in the plot above indicate $\lambda$ that results in minimum cross-validation MSE, far left, and $\lambda$ that is one standard error away, dashed line to the right of middle. Details on those two MSE/$\lambda$ combinations are printed out below. 
+
+```{r }
+lowest_mse_lambda_red = cv_lasso_fit_red$lambda.min
+print(paste0('lambda producing lowest MSE for red wines/lasso: ', lowest_mse_lambda_red))
+print(paste0('log of same value, used for X axis in chart: ', log(lowest_mse_lambda_red)))
+predict(lasso_fit_red, type="coefficients", s=lowest_mse_lambda_red)
+```
+
+```{r }
+
+lowest_mse_plus_one_sd_lambda_red = cv_lasso_fit_red$lambda.1se
+print(paste0('lambda producing MSE 1SD away from min, for red wines/lasso: ', lowest_mse_plus_one_sd_lambda_red))
+print(paste0('log of same value, used for X axis in chart: ', log(lowest_mse_plus_one_sd_lambda_red)))
+predict(lasso_fit_red, type="coefficients", s=lowest_mse_plus_one_sd_lambda_red)
+
+```
+
+One of the earlier homework problems mentions the $\lambda$ reported by `lambda.1se` is often preferable to `lambda.min` as it should result in less overfitting - sacrifice some bias in favor of covering variance. That $\lambda$ will be higher than the "min" one, resulting in more regularization and that is what above outputs confirm. Using the `lambda.min` drops three coefficients from the model while `lambda.1se` eliminates 6 in total, leaving only 5 with actual coefficients. Both appear to be reasonable, lacking practical experience on my side I see no immediate reason to to select (or discard) one or the other.
+
+
+Next, going to use resampling and train/test splits in order to get true test MSE for lasso model, and also see if the same variables are being dropped on different samples of the data.
+
+```{r }
+
+lasso_sampling = function(x, y, try_count) {
+  lassoCoefCnt = 0
+  lassoMSE = NULL
+  for ( iTry in 1:try_count ) {
+    bTrain = sample(rep(c(TRUE,FALSE),length.out=dim(x)[1]))
+    cvLassoTrain = cv.glmnet(x[bTrain,],y[bTrain],alpha=1,lambda=10^((-120:0)/20))
+    lassoTrain = glmnet(x[bTrain,],y[bTrain],alpha=1,lambda=10^((-120:0)/20))
+    lassoTrainCoef = predict(lassoTrain,type="coefficients",s=cvLassoTrain$lambda.1se)
+    lassoCoefCnt = lassoCoefCnt + (lassoTrainCoef[-1,1]!=0)
+    lassoTestPred = predict(lassoTrain,newx=x[!bTrain,],s=cvLassoTrain$lambda.1se)
+    lassoMSE = c(lassoMSE,mean((lassoTestPred-y[!bTrain])^2))
+  }
+
+  #resampling_mse = mean(lassoMSE) # avg test MSE, over 30 train/test splits
+  #lassoCoefCnt  # frequency of inclusion of each of the coefficients in the model
+  out = list(mean(lassoMSE), lassoCoefCnt)
+  return (out)
+}
+
+try_count=30
+lasso_sampling_results_red = lasso_sampling(x_red, y_red, try_count=try_count)
+resampling_mse_red = lasso_sampling_results_red[[1]]
+lasso_coef_cnt_red = lasso_sampling_results_red[[2]]
+
+print(paste0('MSE resampling, lasso: ', resampling_mse_red)) #around 0.44
+print(sprintf('Coefficient counts, across %d resample rounds:', try_count))
+lasso_coef_cnt_red
+
+```
+
+The MSE produced by above, `r resampling_mse_red`, is just a little bit higher than that returned by cross-validation in **Sub-problem 3**, `r test_mse_n7_10f_mean_red` (close enough that on any given run of this .Rmd that it could be a little bit lower instead?).
+
+The stability of lasso with the `red` dataset perhaps leaves something to be desired. The variables `citric_acid `, `residual_sugar`, `free_sulfur_dioxide`, `density` are always being dropped, and `pH` dropped in a vast majority of cases. In the other direction, `volatile_acidity`, `alcohol` always kept and `sulphates` almost always kept. Then the remaining, `fixed_acidity` and `chlorides` dropped most of the time, `total_sulfur_dioxide` usually selected. One thing this means is that it is hard to say what variable count is most common, probably only nvar = 4 or 5.
+
+
+After lasso on `red` dataset, the next section will run through ridge regression on same.
+
+### ridge, red wine
+```{r }
+ridge_fit_red = glmnet(x_red, y_red, alpha=0)
+plot(ridge_fit_red, label=TRUE) #, ylim=c(5,-5))
+```
+
+Looks rather familiar overall, with pesky `density` still causing trouble with graph readability. The non-`density` variables at the top all seem to converge towards zero at about the same rate, hard to tell. Of course this being ridge regression they never actually reach zero and we can see on the top X axis that variable count remains constant at 11.
+
+Below may be not be a realistic representation of the model above as I've just kicked out `density` (adjusting `ylim` didn't help out and I don't know how to suppress `density` in the `glmnet` output such tha the plot would skip it), but it looks to be a feasible close up of how the other 10 variables approach zero as regularization increases. The coefficients on these variables generally shrink in a similar gradual manner, except for `3`, which starts out negative and swings to be increasingly positive (though still very small) before beginning its descent toward zero. 
+
+```{r }
+ridge_fit_red_10var = glmnet(subset(x_red, select=-density), y_red, alpha=0)
+plot(ridge_fit_red_10var, label=TRUE)
+
+```
+
+
+Run a `cv.glmnet` to perform cross-validation on the ridge regression model in order to choose optimal $\lambda$
+
+```{r }
+cv_ridge_fit_red = cv.glmnet(x_red, y_red, alpha=0)
+plot(cv_ridge_fit_red)
+
+```
+
+
+```{r }
+lowest_mse_lambda_ridge_red = cv_ridge_fit_red$lambda.min
+print(paste0('lambda producing lowest MSE for red wines/ridge: ', lowest_mse_lambda_ridge_red))
+p_lowest_mse_predict_ridge_red = predict(cv_ridge_fit_red, type="coefficients", s=lowest_mse_lambda_ridge_red)
+p_lowest_mse_predict_ridge_red
+
+print('min MSE, variables absolute weighting, high to low:')
+sort(abs(p_lowest_mse_predict_ridge_red[-1,1]), decreasing=TRUE)
+```
+
+`free_sulfur_dioxide` and `total_sulfur_dioxide` have very low coefficients, not far from zero. In fact the last 5 listed above are pretty low.
+
+
+```{r }
+lowest_mse_plus_one_sd_lambda_ridge_red = cv_ridge_fit_red$lambda.1se
+print(paste0('lambda producing MSE 1SD away from min, for red wines/lasso: ', lowest_mse_plus_one_sd_lambda_ridge_red))
+p_lowest_mse_1sd_predict_ridge_red = predict(cv_ridge_fit_red, type="coefficients", s=lowest_mse_plus_one_sd_lambda_ridge_red)
+p_lowest_mse_1sd_predict_ridge_red
+
+print('1 SD away, variables absolute weighting, high to low:')
+sort(abs(p_lowest_mse_1sd_predict_ridge_red[-1,1]), decreasing=TRUE)
+
+```
+
+Similar to "lowest MSE" weighting, which shouldn't be surprising, but most coefficients are closer to zero. Makes sense I think, model with this lambda should be less flexible.
+
+
+```{r }
+
+ridge_sampling = function(x, y, try_count) {
+	ridgeCoefCnt = 0
+	ridgeCoefAve = 0
+	ridgeMSE = NULL
+	for ( iTry in 1:30 ) {
+	  bTrain = sample(rep(c(TRUE,FALSE),length.out=nrow(x)))
+	  cvridgeTrain = cv.glmnet(x[bTrain,],y[bTrain],alpha=0,lambda=10^((-50:50)/20))
+	  ridgeTrain = glmnet(x[bTrain,],y[bTrain],alpha=0,lambda=10^((-50:50)/20))
+	  ridgeTrainCoef = predict(ridgeTrain,type="coefficients",s=cvridgeTrain$lambda.1se)
+	  ridgeCoefCnt = ridgeCoefCnt + (ridgeTrainCoef[-1,1]!=0)
+	  ridgeCoefAve = ridgeCoefAve + ridgeTrainCoef[-1,1]
+	  ridgeTestPred = predict(ridgeTrain,newx=x[!bTrain,],s=cvridgeTrain$lambda.1se)
+	  ridgeMSE = c(ridgeMSE,mean((ridgeTestPred-y[!bTrain])^2))
+	}
+	ridgeCoefAve = ridgeCoefAve / length(ridgeMSE)
+	out = list(mean(ridgeMSE), ridgeCoefAve)
+	return (out)
+}
+
+try_count = 30
+ridge_sampling_results_red = ridge_sampling(x_red, y_red, try_count=try_count)
+ridge_resampling_mse_red = ridge_sampling_results_red[[1]]
+ridge_coef_cnt_red = ridge_sampling_results_red[[2]]
+
+print(paste0('MSE resampling, ridge: ', ridge_resampling_mse_red))
+print(sprintf('Coefficient counts, across %d resample rounds:', try_count))
+ridge_coef_cnt_red
+
+```
+
+Now switch to regularization and subset selection on the `white` dataset.
+
+### lasso, white
+
+```{r }
+# -1 to get rid of intercept that glmnet knows to include:
+x_white = model.matrix(y_quality~., white)[,-1]
+y_white = white[,'y_quality']
+lasso_fit_white = glmnet(x_white, y_white, alpha=1)
+plot(lasso_fit_white)
+```
+
+Looks similar to the first attempt at `red` `glmnet` plot - the influence of `density` (red diagonal line, again) overwhelms the details of the chart. It's coefficient begins at an extreme value of -203.137, making me think something has gone wrong. Examine the stats on that column again, and output the straightforward multiple-regression model from early on:  
+
+```{r }
+summary(white$density)
+
+summary(lm_white)
+```
+
+And again, the stats don't appear extreme in any way, the range between min and max appears pretty narrow. Contents of `lm_white` show the problem, assuming it is a problem, has been lying in relatively plain sight all along, I just didn't notice the extreme coeff on `density`.  
+Simple plot of `density` values reveals a potential outlier - I had removed a single observation early on, in Problem 1, but that's it. I'm thinking perhaps a `log` or `sqrt` transformation on the data might have proved useful....
+
+```{r }
+plot(white$density)
+```
+
+Some sleuthing and find there that outlying data point at top of above chart is actually two data points, at rows 1654 and 1664 of the current `white` dataset. If those were removed the `density` values are much more tightly clustered.
+
+```{r }
+# possible density outliers at row indices in current white dataset: 1654, 1664
+#lm_white_raw_clean2 = lm(y_quality~., white[-2782,])
+white_clean2 = white[-c(1654, 1664),]
+plot(white_clean2$density)
+
+```
+
+In interests of further sanity check, do a new `lm` on all `y_quality`~all-variables of the `white` dataset w/o the two maybe-outliers, the one that produced above plot:  
+```{r }
+lm_white2 = lm(y_quality~., white_clean2)
+summary(lm_white2)
+```
+
+And `density` still has an extreme slope. I'm still suspicious I should have taken a different approach (transformation?) on the `white` dataset much earlier but what is done is done and I wouldn't have sufficient time to re-do everything should I find something addressable. Onwards and upwards it is. (with the original `white` dataset minus only the one outlier I removed in Problem 1).
+
+
+As with `red`, lets do a zoom in on the droppage of various variables as regularization increases.
+
+```{r }
+rng = 10^((-70:0)/40)
+#rng = seq(0.005, 0.014, length.out=100)
+lasso_fit_white2 = glmnet(x_white, y_white, alpha=1, lambda=rng)
+plot(lasso_fit_white2)
+```
+
+
+
+Next is the output of `cv.glmnet`, showing averages and variation in MSE values under cross-validation for select values of $\lambda$ (X axis is the log of the input $\lambda$ value):
+
+```{r }
+cv_lasso_fit_white = cv.glmnet(x_white, y_white, alpha=1)
+plot(cv_lasso_fit_white)
+```
+
+
+The two vertical lines above have previously been discussed. Details on the `lambda.min` and `lambda.1se` are below. 
+
+```{r }
+lowest_mse_lambda_white = cv_lasso_fit_white$lambda.min
+print(paste0('lambda producing lowest MSE for white wines/lasso: ', lowest_mse_lambda_white))
+print(paste0('log of same value, used for X axis in chart: ', log(lowest_mse_lambda_white)))
+predict(lasso_fit_white, type="coefficients", s=lowest_mse_lambda_white)
+```
+
+
+```{r }
+lowest_mse_plus_one_sd_lambda_white = cv_lasso_fit_white$lambda.1se
+print(paste0('lambda producing MSE 1SD away from min, for white wines/lasso: ', lowest_mse_plus_one_sd_lambda_white))
+print(paste0('log of same value, used for X axis in chart: ', log(lowest_mse_plus_one_sd_lambda_white)))
+predict(lasso_fit_white, type="coefficients", s=lowest_mse_plus_one_sd_lambda_white)
+```
+
+Here we have another two models to examine, the one based on a $\lambda$ that produces lowest MSE and another that takes the largest $\lambda$ that produces an MSE within one standard error of that `lambda.min` value. The first one only drops one variable and leaves `densitey` with that extreme slope. The second one drops three variables, including the troublesome `density`, and winds up with an intercept of ~2.67, as opposed 195. This latter `lambda.1se` definitely strikes me as likely to be more robust.
+
+
+
+Next analysis involves lasso on the `white` data combined with resampling, along with a check on model stability.
+
+```{r }
+# lasso_sampling defined in the red wine analysis
+try_count=30
+lasso_sampling_results_white = lasso_sampling(x_white, y_white, try_count=try_count)
+resampling_mse_white = lasso_sampling_results_white[[1]]
+lasso_coef_cnt_white = lasso_sampling_results_white[[2]]
+
+print(paste0('MSE resampling, lasso: ', resampling_mse_white)) #around 0.44
+print(sprintf('Coefficient counts, across %d resample rounds:', try_count))
+lasso_coef_cnt_white
+
+
+```
+
+Above returns an MSE of `r resampling_mse_white`, which is almost as good as that from **Sub-problem3**, which was using a nvar=8 model and returned `r test_mse_n8_10f_mean_white` via 10-fold cross-validation (5-fold produced about the same value). 
+
+Breakdown on the `r try_count` rounds:  
+* always, or almost always, keep: `volatile_acidity`, `alcohol`, `residual_sugar`, `free_sulfur_dioxide`    `fixed_acidity`  
+* always, or almost always, zero out: `citric_acid `, `total_sulfur_dioxide`, `density`   
+* Usually keep: `sulphates`,`chlorides`   
+* usually drop: `pH`   
+
+I'm going to guess an nvar of 6 or 7 is most commonly produced by above code, at least one fewer than I found optimal in earlier problem re section methods.  
+
+
+Lasso code on `white` complete, time to move on to ridge regression on same dataset.
+
+### ridge regression, white wine
+```{r }
+ridge_fit_white = glmnet(x_white, y_white, alpha=0)
+plot(ridge_fit_white, label=TRUE)
+```
+the `plot` results for `glmnet` display that `density` probelm once more.
+
+Try again but limit y axis in order to zoom in, had tried similar in earlier section but inadvertantly caused the y-axis to rotate and swap signs, which confused me.
+
+```{r }
+ridge_fit_white = glmnet(x_white, y_white, alpha=0)
+plot(ridge_fit_white, label=TRUE, ylim=c(-3, 3))
+```
+
+This plot looks better for what its worth. The majority of variables, those with positive coefficients, gradually converge towards zero. The two ones that are negative in above closeup, which I believe to be `volatile_acidity` and `chlorides` after looking at innards of the `glmnet` results, are more erratic.
+
+
+As was done for `red`, run a `cv.glmnet` to perform cross-validation on the ridge regression model in order to choose optimal $\lambda$
+
+```{r }
+cv_ridge_fit_white = cv.glmnet(x_white, y_white, alpha=0)
+plot(cv_ridge_fit_white)
+
+```
+
+
+```{r }
+lowest_mse_lambda_ridge_white = cv_ridge_fit_white$lambda.min
+print(paste0('lambda producing lowest MSE for white wines/ridge: ', lowest_mse_lambda_ridge_white))
+p_lowest_mse_predict_ridge_white = predict(cv_ridge_fit_white, type="coefficients", s=lowest_mse_lambda_ridge_white)
+p_lowest_mse_predict_ridge_white
+
+print('min MSE, variables absolute weighting, high to low:')
+sort(abs(p_lowest_mse_predict_ridge_white[-1,1]), decreasing=TRUE)
+```
+
+```{r }
+lowest_mse_plus_one_sd_lambda_ridge_white = cv_ridge_fit_white$lambda.1se
+print(paste0('lambda producing MSE 1SD away from min, for white wines/ridge: ', lowest_mse_plus_one_sd_lambda_ridge_white))
+p_lowest_mse_1sd_predict_ridge_white = predict(cv_ridge_fit_white, type="coefficients", s=lowest_mse_plus_one_sd_lambda_ridge_white)
+p_lowest_mse_1sd_predict_ridge_white
+
+print('1 SD away, variables absolute weighting, high to low:')
+sort(abs(p_lowest_mse_1sd_predict_ridge_white[-1,1]), decreasing=TRUE)
+```
+
+
+```{r }
+try_count = 30
+ridge_sampling_results_white = ridge_sampling(x_white, y_white, try_count=try_count)
+ridge_resampling_mse_white = ridge_sampling_results_white[[1]]
+ridge_coef_cnt_white = ridge_sampling_results_white[[2]]
+
+print(paste0('MSE resampling, ridge: ', ridge_resampling_mse_white))
+print(sprintf('Coefficient counts, across %d resample rounds:', try_count))
+ridge_coef_cnt_white
+
+```
+
+ 
+> Compare resulting models (in terms of number of variables and their effects) to those selected in the previous two tasks (by `regsubsets` and resampling), comment on differences and similarities among them. 
+
+
+`red` dataset:  
+
+From the above, **lasso** variable selection did not appear to be stable and best as I could interpret the most common nvar across multiple resampling trials was 4 or 5. The lowest MSE via resampling was `r resampling_mse_red`  
+
+In **ridge**, of course all 11 predictors would always be persisted in the final model as none would ever technically hit zero, but 5 of those variables wound up with coefficients < 0.10, and of those, 2 were < 0.010, meaning the model was likely controlled by the 4 predictors with greatest weighting. The **ridge** resampling MSE was very close to that of **lasso**, `r ridge_resampling_mse_red`  
+
+In **Sub-problem 2** I had this to say about `regsubsets` and results of exhaustive/forward/backward selection:  
+
+_all four searches came up with similar results. Looking at the indvidual metrics, and the variable count at which gains level off, I would say `rsq`, `adr2`, `cp` all agree on nvar=7, `rss` either 7 or 8, and `bic` at 6. All things considered here I think 7 would be a reasonable variable count to go with._   
+
+The cross validation code (**Sub-problem 3**) was run for 5 and 10 fold:  
+
+* for 5-fold the lowest test MSE is at either nvar=6 or nvar=7  
+* for 10-fold, nvar=7 definitely appears to produce lowest mean test MSE, `r test_mse_n7_10f_mean_red`  
+
+Summary:  
+The selection methods and cross-validation results more or less agreed on nvar=7 and the latter delivered the lowest test MSE. Regularization approaches both resulted in models with lower variable count (lower "effective" variable count in the case of  **ridge**) and test MSE numbers that were a bit higher than cross-validation.  
+
+</br>
+
+`white` dataset:  
+
+Within this current problem, for **lasso** the $\lambda$ producing lowest MSE only dropped one variable but using the `lambda` value resulted in a model dropping three variables. Details on this latter nvar=8 model led me to believe it would be more robust. The resampling exercise delivered an MSE of `r resampling_mse_white`.  
+
+The **ridge** had similar results was with `red` actually: 5 variables < 0.10, with 2 of those being < 0.010. The nvar could be thought of as 6 perhaps, since that is how many would have had a significant effect.  
+Resampling MSE for **ridge** was `r ridge_resampling_mse_white`, my estimate had been that the resampling methods most often produced models with nvar of 6 or 7.  
+
+The `regsubsets` results from **Problem 2** agreed on nvar=8 for the three relevant search methods. For both `white`, and with the earlier `red`, variable selection was stable across the search methods - same set of predictors was chosen at the "best" nvar counts.  
+
+Under cross validation, both 5-fold and 10-fold experiments clearly indicated nvar=8 was best. Test MSE for the 10-fold was `r test_mse_n8_10f_mean_white`.  
+
+Summary:  
+Test MSE numbers overall for `white` were higher than for `red`, quality for white wines appears to be more difficult to predict given these predictors.  That being said, cross-validation also delivered the lowest test MSE, while that of regularization methods was a bit higher and almost indistinguishable from one another.  There was greater agreement here, vs. `red`, in terms of optimal variable count.  Subset selection methods, cross-validation (both 5-fold and 10-fold), and **lasso** all indicated nvar=8 would be best. Results for **ridge** are more difficult to categorize, but I'm estimating there were 6 variables in the final model, with associated resampling indicating 6 or 7 variables gave best results.
+
+
+# Sub-problem 5: PCA (10 points)
+
+Merge data for red and white wine (function `rbind` allows merging of two matrices/data frames with the same number of columns) and plot data projection to the first two principal components (e.g. biplot or similar plots).  Does this representation suggest presence of clustering structure in the data?  Does wine type (i.e. red or white) or quality appear to be associated with different regions occupied by observations in the plot? Please remember *not* to include quality attribute or wine type (red or white) indicator in your merged data, otherwise, apparent association of quality or wine type with PCA layout will be influenced by presence of those indicators in your data.
+
+---
+
+> Merge data for red and white wine (function `rbind` allows merging of two matrices/data frames with the same number of columns) and plot data projection to the first two principal components (e.g. biplot or similar plots).  
+
+Combine the datasets. I plan on scaling the data but first going to run out some summary statistics to support wisdom of such:
+
+```{r }
+# leave out y_quality, column 12
+data = rbind(red[,-12], white[,-12])
+data_mean = apply(data, 2, mean)
+data_var = apply(data, 2, var)
+
+plot(data_mean, data_var, log='xy', 
+     xlab='mean (log scale)', ylab='variance (log scale)', 
+     main='red and white wines combined, variable means vs. variance')
+
+print('Two attributes with highest mean, followed by two with highest variance')
+format(data_mean[order(abs(data_mean), decreasing=TRUE)][1:2], scientific=FALSE)
+format(data_var[order(data_var, decreasing=TRUE)][1:2], scientific=FALSE)
+
+print('Two attributes with lowest mean, followed by two with lowest variance')
+format(data_mean[order(abs(data_mean), decreasing=FALSE)][1:2], scientific=FALSE)
+format(data_var[order(data_var, decreasing=FALSE)][1:2], scientific=FALSE)
+
+```
+
+Previously we've seen a different variables being marked as more (or less) important in `red` and/or `white`, don't want any predictors crowding out others (or being crowded out) simply because the scale on which they were measured. The `winequality.names` file doesn'include indications of measurement units but simply reviewing the above output gives off enough warning signs that scaling the data is a good idea.
+
+
+
+```{r }
+pr_scaled = prcomp(data, scale=TRUE)
+plot(pr_scaled, xlab='dimensions', main='SCALED: variance explained by first several PC', col='pink')
+```
+
+A scree plot of PCA results indicate that there are _not_ one or two variables that overwhelmingly dominate amount of explained variance. The first two components may form a majority of explained variance but the drop from 1 to 2 and 2 to 3 is not extreme.  
+
+Full loadings for the 1st and 2nd principal components:  
+```{r }
+pr_scaled$rotation[,1:2]
+```
+
+The the largest loadings for the first and second PC respectively are:
+```{r }
+sort(abs(pr_scaled$rotation[,1]), decreasing=TRUE)[1]
+```
+```{r }
+sort(abs(pr_scaled$rotation[,2]), decreasing=TRUE)[1]
+```
+
+A `biplot` of the first two PC components of combined dataset:  
+
+```{r fig.height = 10, fig.width = 10}
+
+biplot(pr_scaled, pc.biplot=TRUE, main='scaled data, PC1 & PC2', xlabs=rep('+', dim(pr_scaled$x)[1]), col=c('pink','black') ) 
+```
+
+
+I tried for a good while to come up with a chart that combined the PCA loadings from above with data points colored according to which dataset the originated from. I wasn't able to come up with a solution in a reasonable amount of time so I've chosen to go with a separate chart that can be combined by eye with the above.
+
+```{r fig.height = 10, fig.width = 8}
+row_idx = as.numeric(rownames(data.frame(pr_scaled$x)))
+plot(pr_scaled$x[,1:2], main='PCA with dataset-derived coloring', col=c(ifelse(row_idx <= dim(red)[1], red_col, white_col)))
+```
+
+
+> Does this representation suggest presence of clustering structure in the data?  Does wine type (i.e. red or white) or quality appear to be associated with different regions occupied by observations in the plot? Please remember *not* to include quality attribute or wine type (red or white) indicator in your merged data, otherwise, apparent association of quality or wine type with PCA layout will be influenced by presence of those indicators in your data.
+
+Yes, there are two primary clusters of wine type per above chart, one elongated `white` wine cluster on the right, higher on x-axis than it is wide on y-axis and then another of the `red` wines on the left, also somewhat oval-shaped. The `red` cluster is less dense and more spread out but that appearance may at least partially due to there being 1/3 the number of `red` observations as `white`. 
+
+
+Below is same as earlier chart but broken into separate plots - I was troubleshooting some issues with my initial coloring (numerical filtering being foiled by underlying character data types) and below helped figure things out.
+```{r fig.height = 5, fig.width = 10}
+oldPar <- par(mfrow=c(1,2))
+plot(pr_scaled$x[1:dim(red)[1], 1:2], main='PCA red wine only', col=red_col, xlim=c(-10,10), ylim=c(-5,10), pch='*')
+plot(pr_scaled$x[(dim(red)[1]+1):dim(pr_scaled$x)[1], 1:2], main='PCA white wine only', col=white_col, xlim=c(-10,10), ylim=c(-5,10), pch='*')
+
+```
+
+I'll provide one attempt at plotting PCA and quality.  Below any observations with `y_quality` <= 4 get colored as black, scores of 5 or 6 become violet and anything >= 7 is displayed as purple. I'll note that more purple points are towards the middle bottom, which is an area the PC loadings had indicated meant a higher level of `alcohol`, so that kind of circles back to the very beginning of this problem set.  Also, not surprising that the two most extreme points wind up in the "poor" bin. 
+
+```{r fig.height = 8, fig.width = 8}
+wine_full = rbind(red, white)
+
+wine_binner = function(x){ifelse(x<5, 1, ifelse(x<8, 2, 3))}
+q_colors = c(rep('black', 4), rep('violet',2), rep('purple',3))
+
+pc_q = cbind(pr_scaled$x[,1:2], wine_full$y_quality)
+plot(pc_q[,1:2], main='PCA, more purpler = higher quality', col=q_colors[pc_q[,3]], pch='x')
+
+#plot(pr_scaled$x[,1:2], main='PCA with dataset-derived coloring', col=c(ifelse(row_idx <= dim(red)[1], red_col, white_col)))
+```
+
+
+# Extra 10 points: model wine quality using principal components
+
+Compute PCA representation of the data for one of the wine types (red or white) *excluding wine quality attribute* (of course!). Use resulting principal components (slot `x` in the output of `prcomp`) as new predictors to fit a linear model of wine quality as a function of these predictors.  Compare resulting fit (in terms of MSE, r-squared, etc.) to those obtained above.  Comment on the differences and similarities between these fits.

@@ -1,0 +1,129 @@
+﻿
+
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8'>
+    <title>Lecture 09 Problem 1</title>
+    <script type='text/javascript' src='d3/d3.js'></script>
+    <link rel='stylesheet' type='text/css' href='lec09_p1.css'>
+</head>
+<body>
+    <script type='text/javascript'>
+
+        d3.csv('../Lec09_Data.csv', function (d) {
+ //       d3.csv('../Lec09_Data_short.csv', function(d) {
+            var row = {
+                country: d.Country,
+                region: d.Region,
+                pop: +d.Pop,
+                life: +d.Life,
+                gdp: +d.GDP
+            };
+            return row;
+
+        }, function (data) {
+
+            //sort so the smaller bubbles appear in front of larger
+            data.sort(function (a, b) { return b.pop - a.pop; });
+
+            var width = 1150, height = 555,
+                    margin = { top: 20, right: 20, bottom: 20, left: 70 };
+            //uncomment below for scaled-down version, easier to work with on smaller screen
+            //width = 750; height = 400;
+
+            //horizontal/GDP scale
+             var xScale = d3.scale.log()
+                 .domain([100, 80000])
+                 .range([50, width]);
+
+             var yScale = d3.scale.linear()
+                .domain([100, -10])
+                .range([40,height])
+
+             var xAxis = d3.svg.axis().scale(xScale).orient('bottom')
+                    .tickValues([200,500,1000,5000,10000,20000,50000,100000])
+                    .tickFormat(d3.format('sk'));
+
+             yTicks = [];
+             for (var i = 1; i < 9; i++) {
+                 yTicks.push(i * 10);
+             }
+             var yAxis = d3.svg.axis().scale(yScale).orient('left')
+                    .tickValues(yTicks);
+
+        
+            var svg = d3.select('body').append('svg')
+                .attr('width', width + margin.right + margin.left)
+                .attr('height', height + margin.top + margin.bottom)
+                .attr('class', 'frame');
+
+
+            svg.append("text").attr("x", 25).attr("y", 30)
+                .text("Life expectancy, years").attr('class', 'axis-label');
+            svg.append("text").attr("x", 45).attr("y", height + 35)
+                .text("Income per person, $/year (GDP/capita)").attr('class', 'axis-label');
+
+            
+            var circles = svg.selectAll('circle')
+                .data(data).enter().append('circle')
+                .attr('class', function (d) {
+                    return d.region.toLowerCase().replace(/\W+/g, '')
+                });
+            
+            circles.attr('cx', function (d) {
+                return xScale(d.gdp);
+            })
+             .attr('cy', function (d) {
+                 return yScale(d.life);
+
+             })
+             .attr('r', function (d) {
+                 var scaledPop = Math.sqrt(d.pop /1000000);
+                 return scaledPop;
+             })
+            .on('mouseover', function (d) {
+                var circleUnderMouse = this;
+                d3.selectAll('circle').filter(function (d, i) {
+                    return (this !== circleUnderMouse);
+                }).style('opacity', '0.4');
+                //d3.select(this).style('opacity', '1.0');
+            })
+            .on('mouseout', function (d) {
+                d3.selectAll('circle').style('opacity', '1.0');
+            })
+            .append('title')
+            .text(function (d) {
+                return d.country + '\nIncome: $'
+                                + Math.round(d.gdp) + '\nLife exp: '
+                                + d.life.toFixed(1);
+            });
+
+            svg.selectAll('text')
+            .data(data)
+            .enter()
+            .append('text')
+            .text(function (d) {
+                return d.country;
+            })
+            .attr('class', 'country-label')
+            .attr('x', function (d) { return xScale(d.gdp); })
+            .attr('y', function (d) { return yScale(d.life); });
+        
+            //keep these at end
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(0,' + height + ')')
+                .call(xAxis);
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(50,0)')
+                .call(yAxis);
+
+        });
+
+    </script>
+
+</body>
+</html>

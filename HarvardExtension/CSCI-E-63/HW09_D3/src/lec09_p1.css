@@ -1,0 +1,62 @@
+/*simple border around edge of primary svg*/ 
+.frame {
+    border: 1px solid dimgray;
+}
+
+/*make the actual x/y axes lines resemble target data viz */
+.axis {
+  fill: none;
+  stroke: dimgray;
+  stroke-width: 1; 
+}
+
+/*affects the tick mark values, i.e. 10,20,30, etc. on y axis*/
+.axis text {
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+    font-size: all;
+    fill: gray;
+    stroke: none;
+}
+
+/*same with the axes text labels, e.g. 'Life expactancy, years' for the y axis*/
+text.axis-label {
+    fill: dimgray;
+    font-size: small;
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+}
+
+/*draw a thin outline around each bubble*/
+circle {
+    stroke: dimgray;
+}
+
+/*next 4 items set the colors on the circles, where the data still has the original 
+    Region values, which span the four World Regions we want to consolidate into, 
+    so both europe and baltics regions wind up with yellow fill for the bubble.
+*/
+circle.europe, circle.baltics {
+    fill: #FCEA32; /*yellow*/
+}
+circle.africa  {    
+    fill: #30DCEC; /*blue*/
+}
+circle.oceania, circle.asia, circle.cwofindstates {
+    fill: #FF5872; /*red*/
+}
+circle.america, circle.latinamerica {
+    fill: #95EE32; /*green*/
+}
+
+/*debug Country text labels for each bubble, set visibility attribute to visible 
+    (or remove) in order see labels
+*/
+.country-label {
+    fill: dimgray;
+    outline-color: red;
+    visibility: hidden;
+    font-size: x-small;
+    font-family: Consolas, Arial, sans-serif;
+}
+
+
+

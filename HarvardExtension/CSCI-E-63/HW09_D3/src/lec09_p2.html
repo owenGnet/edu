@@ -1,0 +1,88 @@
+﻿<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8'>
+    <title>Lecture 09 Problem 2</title>
+    <script type='text/javascript' src='d3/d3.js'></script>
+    <link rel='stylesheet' type='text/css' href='lec09_p2.css'>
+</head>
+<body>
+    <script type='text/javascript'>
+
+             d3.csv('../Lec09_Data.csv', function (d) {
+        //d3.csv('../Lec09_Data_short.csv', function (d) {
+
+            var lookup = {
+                'AFRICA': 'africa',
+                'AMERICA': 'america',
+                'ASIA': 'asia',
+                'EUROPE': 'europe',
+                'LATIN AMERICA': 'america',
+                'OCEANIA': 'asia',
+                'BALTICS': 'europe',
+                'C.W. OF IND. STATES': 'asia'
+            };
+
+            var row = {
+                area: lookup[d.Region],
+                country: d.Country,
+                region: d.Region,
+                pop: +d.Pop,
+                life: +d.Life,
+                gdp: +d.GDP
+            };
+            return row;
+
+        }, function (data) {
+            var diameter = 720;
+            //uncomment below for smaller version, e.g. working with dev tools
+            //diameter = 360;
+            var width = diameter, height = diameter;
+            var radius = diameter / 2;
+
+            var svg = d3.select('body')
+                .append('svg')
+                .attr('class', 'frame')
+                .attr('width', width)
+                .attr('height', height)
+                .append('g')
+                .attr('transform', 'translate(' + (width/2) + ',' + (height/2) + ')');
+
+            //sort so regions are grouped together
+            var pie = d3.layout.pie()
+                .value(function (d) { return d.pop; })
+                .sort(function (a, b) {
+                    return d3.ascending(a.area, b.area);
+                });
+
+            var arc = d3.svg.arc()
+                .outerRadius(radius);
+
+            var path = svg.selectAll('path')
+                .data(pie(data))
+                .enter()
+                .append('path')
+                .attr('d', arc)
+                .attr('class', function (d) { return d.data.area })
+                .on('mouseover', function (d) {
+                    //d3.select(this).attr('class', 'purple');
+                    d3.select(this).classed('selected-path', true);
+                })
+                .on('mouseout', function (d) {
+                    //d3.selectAll('path').attr('class', function (d) {
+                    //    return d.data.area;
+                    //});
+                    d3.select(this).classed('selected-path', false);
+                })
+                .append("title")
+                .text(function (d) {
+                    return d.data.country + '\n'
+                        + 'Population (millions): ' + (d.data.pop / 1000000).toFixed(4);
+                });
+        });
+
+
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,764 @@
+---
+title: "CSCI E-63C Week 10 assignment"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(randomForest)
+library(MASS)
+library(class)
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+
+set.seed(2)
+```
+
+# Introduction
+
+In this assignment we will compare performance of random forest to that of LDA and KNN on a simulated dataset where we know exactly what is the association between predictors and outcome.  The relationship between predictor levels and the outcome will involve interaction that is notoriously difficult to model by methods such as LDA. The following example below illustrates the main ideas on a 3D dataset with two of the three attributes associated with the outcome:
+
+```{r}
+# How many observations:
+nObs <- 1000
+# How many predictors are associated with outcome:
+nClassVars <- 2
+# How many predictors are not:
+nNoiseVars <- 1
+# To modulate average difference between two classes' predictor values:
+deltaClass <- 1
+# Simulate dataset with interaction between attribute levels associated with the outcome:
+xyzTmp <- matrix(rnorm(nObs*(nClassVars+nNoiseVars)),nrow=nObs,ncol=nClassVars+nNoiseVars)
+classTmp <- 1
+for ( iTmp in 1:nClassVars ) {
+  deltaTmp <- sample(deltaClass*c(-1,1),nObs,replace=TRUE)
+  xyzTmp[,iTmp] <- xyzTmp[,iTmp] + deltaTmp
+  classTmp <- classTmp * deltaTmp
+}
+classTmp <- factor(classTmp > 0)
+table(classTmp)
+# plot resulting attribute levels colored by outcome:
+pairs(xyzTmp,col=as.numeric(classTmp))
+```
+
+We can see that it is the interaction between the first two variables that has influences the outcome (we simulated it this way, of course!) and that points belonging to each of the two classes cannot be readily separated by a single line in 2D (or a single surface in 3D).
+
+```{r}
+# Split data into train and test
+bTrain <- sample(c(FALSE,TRUE),nrow(xyzTmp),replace=TRUE)
+# Fit random forest to train data, obtain test error:
+rfRes <- randomForest(xyzTmp[bTrain,],classTmp[bTrain])
+rfTmpTbl <- table(classTmp[!bTrain],predict(rfRes,newdata=xyzTmp[!bTrain,]))
+rfTmpTbl
+```
+
+Random forest seems to do reasonably well on such dataset.
+
+```{r}
+# Fit LDA model to train data and evaluate error on the test data:
+ldaRes <- lda(xyzTmp[bTrain,],classTmp[bTrain])
+ldaTmpTbl <- table(classTmp[!bTrain],predict(ldaRes,newdata=xyzTmp[!bTrain,])$class)
+ldaTmpTbl
+```
+
+LDA, on the other hand, not so good! (not a surprise given what we've seen above).  What about a more flexible method such a KNN?  Let's check it out remembering that k -- number of neihbors -- in KNN is the parameter to modulate its flexibility (i.e. bias-variance tradeoff).
+
+```{r}
+# Fit KNN model at several levels of k:
+
+dfTmp <- NULL
+for ( kTmp in sort(unique(floor(1.2^(1:33)))) ) {
+  knnRes <- knn(xyzTmp[bTrain,],xyzTmp[!bTrain,],classTmp[bTrain],k=kTmp)
+  tmpTbl <- table(classTmp[!bTrain],knnRes)
+  dfTmp <- rbind(dfTmp,data.frame(err=1-sum(diag(tmpTbl))/sum(tmpTbl),k=kTmp))
+}
+ggplot(dfTmp,aes(x=k,y=err))+geom_point()+scale_x_log10()+geom_hline(aes(yintercept = err,colour=type),data=data.frame(type=c("LDA","RF"),err=c(1-sum(diag(ldaTmpTbl))/sum(ldaTmpTbl),1-sum(diag(rfTmpTbl))/sum(rfTmpTbl))))+ggtitle("KNN error rate")
+```
+
+
+
+
+We can see from the above that there is a range of $K$ values where test error of KNN is the lowest and it is even lower that that of RF.  Now would be a good moment to think why one would want to choose RF over KNN or vice a versa for modeling the data if the figure above was representative of their true relative performance on a new dataset.
+
+For the purposes of the assignment you can use the code above (probably best to wrap reusable parts of it into function(s)) to generate data with varying numbers of predictors associated with outcome and not, different numbers of observations and differences in the average values of predictors' between two classes as required below. These differences between datasets and parameters of the call to random forest will illustrate some of the factors influencing relative performance of random forest, LDA and KNN classifiers.  When comparing to KNN performance, please choose value(s) of `k` such that it performs sufficiently well -- feel free to refer to the plot above to select useful value(s) of `k` that you would like to evaluate here.  Keep in mind also that the value of `k` cannot be larger than the number of observations in the training dataset.
+
+# Sub-problem 1 (15 points): effect of sample size
+
+Generate training datasets with `nObs=25`, `100` and `500` observations such that two variables are associated with the outcome as parameterized above and three are not associated and average difference between the two classes is the same as above (i.e. in the notation from the above code `nClassVars=2`, `nNoiseVars=3` and `deltaClass=1`).  Obtain random forest, LDA and KNN test error rates on a (for greater stability of the results, much larger, say, with 10K observations) test dataset simulated from the same model.  Describe the differences between different methods and across the sample sizes used here.
+
+---
+
+> Generate training datasets with `nObs=25`, `100` and `500` observations such that two variables are associated with the outcome as parameterized above and three are not associated and average difference between the two classes is the same as above (i.e. in the notation from the above code `nClassVars=2`, `nNoiseVars=3` and `deltaClass=1`).
+
+
+Generate three training sets with number of observations = `25`/`100`/`500`
+
+```{r }
+# nClassVars: How many predictors are associated with outcome:
+# nNoiseVars: How many predictors are not:
+# deltaClass: To modulate average difference between two classes' predictor values:
+sim_data = function(nObs=1000, nClassVars=2, nNoiseVars=1, deltaClass=1){
+  set.seed(63)
+  # Simulate dataset with interaction between attribute levels associated with the outcome:
+  xyzTmp = matrix(rnorm(nObs*(nClassVars+nNoiseVars)),nrow=nObs,ncol=nClassVars+nNoiseVars)
+  classTmp = 1
+  for ( iTmp in 1:nClassVars ) {
+    deltaTmp = sample(deltaClass*c(-1,1), nObs,replace=TRUE)
+    xyzTmp[,iTmp] = xyzTmp[,iTmp] + deltaTmp
+    classTmp = classTmp * deltaTmp
+  }
+  classTmp = factor(classTmp > 0)
+  
+  # return data.frame with class as first column = 'y_class'
+  return(data.frame(y_class=classTmp, xyzTmp))
+  #return (cbind(classTmp, xyzTmp))
+}
+
+train_25 = sim_data(nObs=25, nClassVars=2, nNoiseVars=3, deltaClass=1)
+train_100 = sim_data(nObs=100, nClassVars=2, nNoiseVars=3, deltaClass=1)
+train_500 = sim_data(nObs=500, nClassVars=2, nNoiseVars=3, deltaClass=1)
+
+```
+
+
+Check the results to make sure everything as expected, first a `table` to demonstrate approximate 50/50 distribution of outcome variable = `y_class`. Then pair-wise plots to show we have two "associated" variables (`X1`, `X2`) along with three independent (`X3`,`X4`,`X5`), for a total of five predictor variables.
+```{r }
+# sanity check on the training set of 500 observations
+table(train_500[,1])
+
+# plot resulting attribute levels colored by outcome:
+pairs(train_500[,-1], col=as.numeric(train_500[,1]))
+```
+
+
+> Obtain random forest, LDA and KNN test error rates on a (for greater stability of the results, much larger, say, with 10K observations) test dataset simulated from the same model. 
+
+Create functions for fitting and calculating error rate on the Random Forest, LDA, and KNN
+
+```{r }
+err_rate = function(tbl) {
+  return (1-sum(diag(tbl))/sum(tbl))
+}
+
+rf_predict_table = function (train, test, mtry_val=0) {
+  # y_class outcome variable is in first column
+  if (mtry_val == 0) {
+    rf_fit = randomForest(train[,-1], train[,1])
+  } else {
+      print(paste0('mtry passed in = ', mtry_val))
+      rf_fit = randomForest(train[,-1], train[,1], mtry=mtry_val)
+  }
+  rf_pred_table = table(test[,1],predict(rf_fit, newdata=test[,-1]))
+  rf_err_rate = err_rate(rf_pred_table)
+  
+  list(conf_table=rf_pred_table, err_rate=rf_err_rate)
+}
+
+lda_predict_table = function(train, test) {
+  lda_fit = lda(train[,-1], train[,1])
+  lda_pred_table = table(test[,1], predict(lda_fit, newdata=test[,-1])$class)
+  lda_err_rate = err_rate(lda_pred_table)
+  
+  list(conf_table=lda_pred_table, err_rate=lda_err_rate)
+}
+
+knn_predict_multiple = function(train, test, knn_range=1:10) {
+  df_knn = NULL
+  for ( kTmp in knn_range) {
+    if (kTmp > nrow(data.frame(train)) ) {
+      # if k > number of observations, skip
+      next
+    }
+    knn_fit = knn(data.frame(train[,-1]), data.frame(test[,-1]), train[,1], k=kTmp)
+    tmp_tbl = table(test[,1], knn_fit)
+    df_knn = rbind(df_knn, data.frame(err=err_rate(tmp_tbl), k=kTmp))
+  }
+  return (df_knn)
+}
+```
+
+
+### Sanity check
+Run the original test/train used for the final plot in the *Introduction* through my new functions and confirm both the original plot, and the one below, look similar.
+
+```{r }
+df_repro_train = data.frame(classTmp[bTrain], xyzTmp[bTrain,])
+df_repro_test = data.frame(classTmp[!bTrain], xyzTmp[!bTrain,])
+
+lda_predict_repro = lda_predict_table(df_repro_train, df_repro_test)
+lda_tmp_tbl_repro = lda_predict_repro$conf_table
+lda_error_repro = lda_predict_repro$err_rate
+rf_predict_repro = rf_predict_table(df_repro_train, df_repro_test)
+rf_tmp_tbl_repro = rf_predict_repro$conf_table
+rf_error_repro = rf_predict_repro$err_rate
+
+
+rng = sort(unique(floor(1.2^(1:33)))) 
+df_knn_repro = knn_predict_multiple(df_repro_train, df_repro_test, knn_range=rng)
+
+ggplot(df_knn_repro,aes(x=k,y=err))+geom_point()+scale_x_log10()+geom_hline(aes(yintercept = err,colour=type),data=data.frame(type=c("LDA","RF"),err=c(lda_error_repro, rf_error_repro)))+ggtitle("KNN error rate (reproduction of example in Introduction)")
+
+```
+
+Results are good, it appears I didn't make any blatant errors in turning the ad-hoc code into functions.
+
+
+
+### Continuing...  
+
+Generate a 10k test dataset with same params as for the training sets.
+```{r }
+test = sim_data(nObs=10000, nClassVars=2, nNoiseVars=3, deltaClass=1)
+```
+
+Calculate Random Forest and LDA using each of the three training set sizes + test dataset = 10,000 rows. Print out the associated confusion matrix and error rate for each.
+
+```{r }
+rf_25 = rf_predict_table(train_25, test) 
+rf_100 = rf_predict_table(train_100, test) 
+rf_500 = rf_predict_table(train_500, test) 
+
+lda_25 = lda_predict_table(train_25, test)
+lda_100 = lda_predict_table(train_100, test)
+lda_500 = lda_predict_table(train_500, test)
+
+n=25
+cat(sprintf('nObs=%s training set\n', n))
+cat('* Random Forest\n')
+rf_25
+cat('* LDA\n')
+lda_25
+
+n=100
+cat(sprintf('nObs=%s training set\n', n))
+cat('* Random Forest\n')
+rf_100
+cat('* LDA\n')
+lda_100
+
+n=500
+cat(sprintf('nObs=%s training set\n', n))
+cat('* Random Forest\n')
+rf_500
+cat('* LDA\n')
+lda_500
+```
+
+Random Forest, error rates on `nObs=10k` test set, with model based on:  
+* `nObs=25` train set  : `r rf_25$err_rate`  
+* `nObs=100` train set  : `r rf_100$err_rate`  
+* `nObs=500` train set  : `r rf_500$err_rate`  
+
+LDA, error rates on `nObs=10k` test set, with model based on:  
+* `nObs=25` train set  : `r lda_25$err_rate`  
+* `nObs=100` train set  : `r lda_100$err_rate`  
+* `nObs=500` train set  : `r lda_500$err_rate`  
+
+
+Trying similar outputs for `knn` would be a little extreme, given the number of $k$ values that will be used. So we are going to settle on a broad visualization of `knn` error rates and also add in the various rates for both Random Forest and LDA.
+
+```{r }
+
+get_err_plot = function(df, lda_err_rate, rf_err_rate, title_suffix) {
+  # if more than one, return the first row
+  lowest_err_row = df[which(df$err==min(df$err)),][1,]
+  lowest_err_value = round(lowest_err_row$err, 4)
+  lowest_err_k = lowest_err_row$k
+  lowest_err_label = sprintf('lowest err:\n%f\nk=%d', lowest_err_row$err, lowest_err_k)
+  
+  plt = (ggplot(df,aes(x=k,y=err)) 
+         + geom_point() 
+  #       + scale_x_log10()
+    + scale_x_log10(breaks=sort(c(round(seq(min(df$k), max(df$k), length.out=10)), lowest_err_k)))
+         + geom_hline(aes(yintercept=err, colour=type), 
+                      data=data.frame(type=c("LDA","RF"), 
+                      err=c(lda_err_rate, rf_err_rate))) 
+  
+         + geom_text(aes(1, err, colour=type, label=err_rate_label, vjust = -1),
+                      data=data.frame(type=c("LDA","RF"), 
+                        err_rate_label=c(lda_err_rate, rf_err_rate),
+                        err=c(lda_err_rate, rf_err_rate))) 
+  
+         #+ geom_text(aes(1, lda_err_rate, label=lda_err_rate, vjust = -1))
+         #+ geom_text(aes(1, rf_err_rate, label=rf_err_rate, vjust = -1))
+         + geom_text(aes(lowest_err_k, lowest_err_value, label=lowest_err_label, vjust=-1))
+         + geom_text(aes(lowest_err_k, lowest_err_value, label='|', vjust=-3))
+         + ggtitle(sprintf('KNN, LDA, RF error rates, %s ', title_suffix)))
+  
+  return (list(g_plot=plt, err_info=lowest_err_row))
+}
+
+# testing of above
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_100 = knn_predict_multiple(train_100, test, knn_range=rng)
+out = get_err_plot(df_knn_train_100, lda_100$err_rate, rf_100$err_rate, 'TESTING ** TESTING') 
+# out$g_plot
+```
+
+First plot is for all three models where the training set size = **25**
+
+```{r fig.width=9, fig.height=6}
+# put in a reasonable range for this training dataset
+#  though it will effectivley exit once k > number of training observations
+rng = 1:25
+df_knn_train_25 = knn_predict_multiple(train_25, test, knn_range=rng)
+
+# norm_scale_plt_test = (ggplot(df_knn_train_25,aes(x=k,y=err)) 
+#        + geom_point() 
+#        + scale_x_continuous(breaks=df_knn_train_25$k)
+#        + geom_hline(aes(yintercept = err, colour=type), data=data.frame(type=c("LDA","RF"),err=c(lda_25$err_rate, rf_25$err_rate))) 
+#        + geom_text(aes(0, lda_25$err_rate, label=lda_25$err_rate, vjust = -1))
+#        + geom_text(aes(0, rf_25$err_rate, label=rf_25$err_rate, vjust = -1))
+#        + ggtitle('KNN, LDA, RF error rates, training set size: 25'))
+
+# use the function instead
+out_25 = get_err_plot(df_knn_train_25, lda_25$err_rate, rf_25$err_rate, 
+  sprintf('training set size: %d', 25)) 
+out_25$g_plot
+```
+
+At a very low training set size of 25, KNN is the obvious winner, where there are multiple $K$ values that result in a lower error rate than either LDA or Random Forest, with lowest actually at $K$=`r out_25$err_info$k`. Looks like anything < 11 or so will beat the model with the next lowest error rate = Random Forest. Bringing up the rear would be LDA, which has the highest error rate (not considering KNN with $K$ > ~14).
+
+
+Next, training set size = **100**
+
+```{r fig.width=9, fig.height=6}
+
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_100 = knn_predict_multiple(train_100, test, knn_range=rng)
+out_100 = get_err_plot(df_knn_train_100, lda_100$err_rate, rf_100$err_rate, 
+  sprintf('training set size: %d', 100))  
+out_100$g_plot
+```
+
+Random Forest is the (slight) winner with a training set of 500, where a KNN model with $K$=`r out_100$err_info$k` is about the same. After that $K$ level the error rate on KNN escalates as $K$ increases, until it eventual reaches the error rate produced by LDA, which is about 40% higher than the low rates of Random Forest and $K$=`r out_100$err_info$k`.
+
+And finally training set size = **500**
+
+```{r fig.width=9, fig.height=6}
+rng = sort(unique(floor(1.2^(1:27)))) 
+df_knn_train_500 = knn_predict_multiple(train_500, test, knn_range=rng)
+
+out_500 = get_err_plot(df_knn_train_500, lda_500$err_rate, rf_500$err_rate, 
+  sprintf('training set size: %d', 500))  
+out_500$g_plot
+```
+
+With a 500 member training set LDA produces the model with the highest error rate once more. The lowest is KNN with  $K$=`r out_500$err_info$k` and there are several $K$ values that generate a lower value than the remaining method = Random Forest. Even so, Random Forest and those multiple low-error-rate KNN are around the same level, which is notably lower than LDA.
+
+>  Describe the differences between different methods and across the sample sizes used here.
+
+Above included descriptions of the differences betwen the various methods. In terms of differing sample sizes, error rate on LDA went up a very little bit and then back down again as the sample size increased, which could have just been due to natural variability with little real meaning. Random Forest consistently produced a lower error rate as sample size increase, with the biggest relative jump coming from the increase 25 -> 100 training set. KNN followed a similar pattern, decreasing error rate as training size increased, but the change wasn't as evident as for Random Forest. 
+
+
+# Sub-problem 2 (15 points): effect of signal magnitude
+
+For training datasets with `nObs=100` and `500` observations simulate data as shown above with average differences between the two classes that are same as above, half of that and twice that (i.e. `deltaClass=0.5`, `1` and `2`).  Obtain and plot test error rates of random forest, LDA and KNN for each of the six (two samples sizes times three signal magnitudes) combinations of sample size and signal strengths.  As before use large test dataset (e.g. 10K observations or so) for greater stability of the results.  Describe the most pronounced differences across error rates for those datasets: does the increase in the number of observations impact the error rate of the models?  Does change in the magnitude of signal impact their performance?  Are different classifier approaches impacted in a similar way?
+
+---
+
+> For training datasets with `nObs=100` and `500` observations simulate data as shown above with average differences between the two classes that are same as above, half of that and twice that (i.e. `deltaClass=0.5`, `1` and `2`).  
+
+Create training and test datasets, create the Random Forest and LDA models
+
+```{r }
+train_100_delta_a = sim_data(nObs=100, nClassVars=2, nNoiseVars=3, deltaClass=0.5)
+train_500_delta_a = sim_data(nObs=500, nClassVars=2, nNoiseVars=3, deltaClass=0.5)
+test_delta_a = sim_data(nObs=10000, nClassVars=2, nNoiseVars=3, deltaClass=0.5)
+
+# generate new sets to keep naming conventions consistent
+train_100_delta_b = sim_data(nObs=100, nClassVars=2, nNoiseVars=3, deltaClass=1)
+train_500_delta_b = sim_data(nObs=500, nClassVars=2, nNoiseVars=3, deltaClass=1)
+test_delta_b = sim_data(nObs=10000, nClassVars=2, nNoiseVars=3, deltaClass=1)
+
+train_100_delta_c = sim_data(nObs=100, nClassVars=2, nNoiseVars=3, deltaClass=2)
+train_500_delta_c = sim_data(nObs=500, nClassVars=2, nNoiseVars=3, deltaClass=2)
+test_delta_c = sim_data(nObs=10000, nClassVars=2, nNoiseVars=3, deltaClass=2)
+
+```
+
+> Obtain and plot test error rates of random forest, LDA and KNN for each of the six (two samples sizes times three signal magnitudes) combinations of sample size and signal strengths.  As before use large test dataset (e.g. 10K observations or so) for greater stability of the results. 
+
+Create and display results for training set of `nObs`=100, `delta`=0.5
+
+```{r fig.width=9, fig.height=6}
+rf_100_delta_a = rf_predict_table(train_100_delta_a, test_delta_a) 
+lda_100_delta_a = lda_predict_table(train_100_delta_a, test_delta_a)
+
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_100_delta_a = knn_predict_multiple(train_100_delta_a, test_delta_a, knn_range=rng)
+out = get_err_plot(df_knn_train_100_delta_a, rf_100_delta_a$err_rate, lda_100_delta_a$err_rate, 
+  sprintf('training set size: %d, delta %.1f', 100, 0.5)) 
+knn_train_100_delta_a_err_info=out$err_info
+out1=out
+out$g_plot
+```
+
+Create and display results for training set of `nObs`=500, `delta`=0.5
+
+```{r fig.width=9, fig.height=6}
+rf_500_delta_a = rf_predict_table(train_500_delta_a, test_delta_a)
+lda_500_delta_a = lda_predict_table(train_500_delta_a, test_delta_a)
+
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_500_delta_a = knn_predict_multiple(train_500_delta_a, test_delta_a, knn_range=rng)
+out = get_err_plot(df_knn_train_500_delta_a, rf_500_delta_a$err_rate, lda_500_delta_a$err_rate, 
+  sprintf('training set size: %d, delta %.1f', 500, 0.5)) 
+knn_train_500_delta_a_err_info=out$err_info
+out2=out
+out$g_plot
+```
+
+Create and display results for training set of `nObs`=100, `delta`=1
+
+```{r fig.width=9, fig.height=6}
+rf_100_delta_b = rf_predict_table(train_100_delta_b, test_delta_b) 
+rf_500_delta_b = rf_predict_table(train_500_delta_b, test_delta_b)
+lda_100_delta_b = lda_predict_table(train_100_delta_b, test_delta_b)
+lda_500_delta_b = lda_predict_table(train_500_delta_b, test_delta_b)
+
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_100_delta_b = knn_predict_multiple(train_100_delta_b, test_delta_b, knn_range=rng)
+out = get_err_plot(df_knn_train_100_delta_b, rf_100_delta_b$err_rate, lda_100_delta_b$err_rate, 
+  sprintf('training set size: %d, delta %.1f', 100, 1)) 
+knn_train_100_delta_b_err_info=out$err_info
+out3=out
+out$g_plot
+```
+
+
+Create and display results for training set of `nObs`=500, `delta`=1
+
+```{r fig.width=9, fig.height=6}
+rf_500_delta_b = rf_predict_table(train_500_delta_b, test_delta_b)
+lda_500_delta_b = lda_predict_table(train_500_delta_b, test_delta_b)
+
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_500_delta_b = knn_predict_multiple(train_500_delta_b, test_delta_b, knn_range=rng)
+out = get_err_plot(df_knn_train_500_delta_b, rf_500_delta_b$err_rate, lda_500_delta_b$err_rate, 
+  sprintf('training set size: %d, delta %.1f', 500, 1)) 
+knn_train_500_delta_b_err_info=out$err_info
+out4=out
+out$g_plot
+```
+
+
+Create and display results for training set of `nObs`=100, `delta`=2
+
+```{r fig.width=9, fig.height=6}
+rf_100_delta_c = rf_predict_table(train_100_delta_c, test_delta_c) 
+lda_100_delta_c = lda_predict_table(train_100_delta_c, test_delta_c)
+
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_100_delta_c = knn_predict_multiple(train_100_delta_c, test_delta_c, knn_range=rng)
+out = get_err_plot(df_knn_train_100_delta_c, rf_100_delta_c$err_rate, lda_100_delta_c$err_rate, 
+  sprintf('training set size: %d, delta %.1f', 100, 2)) 
+knn_train_100_delta_c_err_info=out$err_info
+out5=out
+out$g_plot
+```
+
+
+Create and display results for training set of `nObs`=500, `delta`=2
+
+```{r fig.width=9, fig.height=6}
+rf_500_delta_c = rf_predict_table(train_500_delta_c, test_delta_c)
+lda_500_delta_c = lda_predict_table(train_500_delta_c, test_delta_c)
+
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_train_500_delta_c = knn_predict_multiple(train_500_delta_c, test_delta_c, knn_range=rng)
+out = get_err_plot(df_knn_train_500_delta_c, rf_500_delta_c$err_rate, lda_500_delta_c$err_rate, 
+  sprintf('training set size: %d, delta %.1f', 500, 2)) 
+knn_train_500_delta_c_err_info=out$err_info
+out6=out
+out$g_plot
+```
+
+And an attempt to get them all in one set of plots
+
+```{r fig.width=9, fig.height=9}
+tny_theme= theme(
+  text = element_text(size=8),
+  plot.title = element_text(size=8),
+  axis.title.x = element_text(size=8),
+  axis.text.x = element_text(size=8),
+  axis.title.y = element_text(size=8),
+  axis.text.y = element_text(size=8)
+)
+
+library("gridExtra")
+grid.arrange(out1$g_plot+tny_theme, out2$g_plot+tny_theme, out3$g_plot+tny_theme, out4$g_plot+tny_theme, out5$g_plot+tny_theme, out6$g_plot+tny_theme, nrow=3, ncol=2, top='Problem 2')
+
+```
+
+
+> Describe the most pronounced differences across error rates for those datasets: does the increase in the number of observations impact the error rate of the models?  Does change in the magnitude of signal impact their performance?  Are different classifier approaches impacted in a similar way?
+
+The increase from training set of 100 to 500 consistently reduces error rates for both KNN and Random Forest models. The decrease is not extreme in absolute terms but is significant in terms of percent, ranging from 5% to over 45% decrease, with the biggest % decrease for Random Forest with `delta`=2, `r rf_100_delta_c$err_rate` with 100 sample vs. `r rf_500_delta_c$err_rate` with 500 set training sample: `r ((rf_500_delta_c$err_rate - rf_100_delta_c$err_rate)/rf_100_delta_c$err_rate)*100`% decrease. The error rate also decreases with LDA but the change is small, both in absolute and relative terms.
+
+Looking at the results in terms of `delta`/signal, the first thing to point out is that LDA results are generally not very impacted and in fact in some cases the error rate decreases a small amount when `delta` increases and in other cases error rate increases (again, by a small amount). Random Forest results consistently improve, i.e. error rate decreases, with each increase in signal magnitude, by significant amounts in relative terms. Looking at KNN with lowest error rates $K$ values, see a similar pattern - at training set sizes of 100 the error rate decreases by roughly 85% going from `delta`=1 to `delta`=2.
+
+
+
+# Sub-problem 3 (15 points): varying counts of predictors
+
+For all possible pairwise combinations of the numbers of variables associated with outcome (`nClassVars=2` and `5`) and those not associated with the outcome (`nNoiseVars=1`, `3` and `10`) -- six pairwise combinations in total -- obtain and present graphically test errors from random forest, LDA and KNN.  Choose signal magnitude (`deltaClass`) and training data sample size so that this simulation yields non-trivial results -- noticeable variability in the error rates across those six pairwise combinations of attribute counts.  Describe the results: what is the impact of the increase of the number of attributes associated with the outcome on the classifier performance?  What about the number of attributes not associated with outcome - does it affect classifier error rate?  Are different classifier methods affected by these simulation parameters in a similar way?
+
+---
+
+> For all possible pairwise combinations of the numbers of variables associated with outcome (`nClassVars=2` and `5`) and those not associated with the outcome (`nNoiseVars=1`, `3` and `10`) -- six pairwise combinations in total -- obtain and present graphically test errors from random forest, LDA and KNN.  Choose signal magnitude (`deltaClass`) and training data sample size so that this simulation yields non-trivial results -- noticeable variability in the error rates across those six pairwise combinations of attribute counts.  
+
+I tried a few different combinations of training set size and `delta` values on the set of 6 combinations and a train size of 100 and `delta`=1 seemed to produce pretty decent variable across the results
+
+```{r fig.width=8, fig.height=5}
+train_size = 100
+delta_val = 1
+
+# generate data: 2 predictors associated with outcome, 1/3/10 noiseVars
+train_2class_1noise = sim_data(nObs=train_size, deltaClass=delta_val, nClassVars=2, nNoiseVars=1)
+test_2class_1noise = sim_data(nObs=10000, deltaClass=delta_val, nClassVars=2, nNoiseVars=1)
+train_2class_3noise = sim_data(nObs=train_size, deltaClass=delta_val, nClassVars=2, nNoiseVars=3)
+test_2class_3noise = sim_data(nObs=1000, deltaClass=delta_val, nClassVars=2, nNoiseVars=3)
+train_2class_10noise = sim_data(nObs=train_size, deltaClass=delta_val, nClassVars=2, nNoiseVars=10)
+test_2class_10noise = sim_data(nObs=1000, deltaClass=delta_val, nClassVars=2, nNoiseVars=10)
+
+
+# generate data: 5 predictors associated with outcome, 1/3/10 noiseVars
+train_5class_1noise = sim_data(nObs=train_size, deltaClass=delta_val, nClassVars=5, nNoiseVars=1)
+test_5class_1noise = sim_data(nObs=10000, deltaClass=delta_val, nClassVars=5, nNoiseVars=1)
+train_5class_3noise = sim_data(nObs=train_size, deltaClass=delta_val, nClassVars=5, nNoiseVars=3)
+test_5class_3noise = sim_data(nObs=1000, deltaClass=delta_val, nClassVars=5, nNoiseVars=3)
+train_5class_10noise = sim_data(nObs=train_size, deltaClass=delta_val, nClassVars=5, nNoiseVars=10)
+test_5class_10noise = sim_data(nObs=1000, deltaClass=delta_val, nClassVars=5, nNoiseVars=10)
+
+
+# create plots: 2 predictors associated with outcome, 1/3/10 noiseVars
+rf_2class_1noise = rf_predict_table(train_2class_1noise, test_2class_1noise)
+lda_2class_1noise = lda_predict_table(train_2class_1noise, test_2class_1noise)
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_2class_1noise = knn_predict_multiple(train_2class_1noise, test_2class_1noise, knn_range=rng)
+out1 = get_err_plot(df_knn_2class_1noise, rf_2class_1noise$err_rate, lda_2class_1noise$err_rate, 
+  sprintf('train size: %d, delta: %.1f, \n   nClassVars=%d, nNoiseVars=%d', train_size, delta_val, 2, 1)) 
+#knn_2class_1noise_err_info=out1$err_info
+
+
+rf_2class_3noise = rf_predict_table(train_2class_3noise, test_2class_3noise)
+lda_2class_3noise = lda_predict_table(train_2class_3noise, test_2class_3noise)
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_2class_3noise = knn_predict_multiple(train_2class_3noise, test_2class_3noise, knn_range=rng)
+out2 = get_err_plot(df_knn_2class_3noise, rf_2class_3noise$err_rate, lda_2class_3noise$err_rate, 
+  sprintf('train size: %d, delta: %.1f, \n   nClassVars=%d, nNoiseVars=%d', train_size, delta_val, 2, 3)) 
+#knn_2class_1noise_err_info=out2$err_info
+
+
+rf_2class_10noise = rf_predict_table(train_2class_10noise, test_2class_10noise)
+lda_2class_10noise = lda_predict_table(train_2class_10noise, test_2class_10noise)
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_2class_10noise = knn_predict_multiple(train_2class_10noise, test_2class_10noise, knn_range=rng)
+out3 = get_err_plot(df_knn_2class_10noise, rf_2class_10noise$err_rate, lda_2class_10noise$err_rate, 
+  sprintf('train size: %d, delta: %.1f, \n   nClassVars=%d, nNoiseVars=%d', train_size, delta_val, 2, 10)) 
+#knn_2class_1noise_err_info=out2$err_info
+
+
+# create plots: 5 predictors associated with outcome, 1/3/10 noiseVars
+rf_5class_1noise = rf_predict_table(train_5class_1noise, test_5class_1noise)
+lda_5class_1noise = lda_predict_table(train_5class_1noise, test_5class_1noise)
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_5class_1noise = knn_predict_multiple(train_5class_1noise, test_5class_1noise, knn_range=rng)
+out4 = get_err_plot(df_knn_5class_1noise, rf_5class_1noise$err_rate, lda_5class_1noise$err_rate, 
+  sprintf('train size: %d, delta: %.1f, \n   nClassVars=%d, nNoiseVars=%d', train_size, delta_val, 5, 1)) 
+#knn_5class_1noise_err_info=out1$err_info
+
+rf_5class_3noise = rf_predict_table(train_5class_3noise, test_5class_3noise)
+lda_5class_3noise = lda_predict_table(train_5class_3noise, test_5class_3noise)
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_5class_3noise = knn_predict_multiple(train_5class_3noise, test_5class_3noise, knn_range=rng)
+out5 = get_err_plot(df_knn_5class_3noise, rf_5class_3noise$err_rate, lda_5class_3noise$err_rate, 
+  sprintf('train size: %d, delta: %.1f, \n   nClassVars=%d, nNoiseVars=%d', train_size, delta_val, 5, 3)) 
+#knn_5class_1noise_err_info=out5$err_info
+
+
+rf_5class_10noise = rf_predict_table(train_5class_10noise, test_5class_10noise)
+lda_5class_10noise = lda_predict_table(train_5class_10noise, test_5class_10noise)
+rng = sort(unique(floor(1.2^(1:26)))) 
+df_knn_5class_10noise = knn_predict_multiple(train_5class_10noise, test_5class_10noise, knn_range=rng)
+out6 = get_err_plot(df_knn_5class_10noise, rf_5class_10noise$err_rate, lda_5class_10noise$err_rate, 
+  sprintf('train size: %d, delta: %.1f, \n  nClassVars=%d, nNoiseVars=%d', train_size, delta_val, 5, 10)) 
+#knn_5class_1noise_err_info=out5$err_info
+
+
+out1$g_plot
+out2$g_plot
+out3$g_plot
+out4$g_plot
+out5$g_plot
+out6$g_plot
+
+```
+
+And all six together
+
+```{r fig.width=9, fig.height=9}
+grid.arrange(out1$g_plot+tny_theme, out2$g_plot+tny_theme, out3$g_plot+tny_theme, out4$g_plot+tny_theme, out5$g_plot+tny_theme, out6$g_plot+tny_theme, nrow=3, ncol=2, top='Problem 3')
+
+```
+
+> Describe the results: what is the impact of the increase of the number of attributes associated with the outcome on the classifier performance?  
+
+When nClassVars goes from 2 to 5 the error rates generally appear to increase for all of the methods (I did see with nNoiseVars=1 it decreased very slightly for Random Forest). In some cases, e.g. nNoiseVars=3, the change was notable, almost 50% increase in error rate for LDA, 35% increase for KNN.
+
+> What about the number of attributes not associated with outcome - does it affect classifier error rate?  
+
+The addition of more noise variables had relatively little effect on Random Forest error rates, the error went down slightly in the nClassVars=2 series but went up and then down a bit on nClassVars=5 series, little enough change to maybe be random.  LDA showed a similar pattern for nClassVars=5 and with the nClassVars=2 set it wend down a bit going from 1 to 3 noise variables and then suffered a 25% increase in error rate going from 3 noise variables to 10. KNN was seemingly consistent when there were 2 outcome-dependent class variables, error rate steadily trending upward as more noise variables were added. In the final set, KNN with nClassVars=5 there was little change at all - a few percent change between the various noise variable counts.
+
+> Are different classifier methods affected by these simulation parameters in a similar way?
+
+As described above the results generally seemed consistent when looking at changes in number of nClassVars (more of those generally increased error rates) and then really a lack of any consistent pattern when looking at number of noise variables across the three methods.
+
+
+## PROBLEM 3 POSTSCRIPT
+
+The above results didn't really match my expectations - at the least I was expecting the error rate to go down significantly as more attributes associated with the outcome were added. The pairwise plots I ran on the train sets didn't make intuitive sense either, but I didn't have time to look any further until the entire homework was complete (and even then, won't be able to do more than present the suspicious plots).
+
+Both examples use code straight from the introduction, with only the base variables changed, both producing 5 total predictor variables as in the problem above.  
+
+Using a dataset of 1,000 + `nClassVars=2` + `nNoiseVars=3` + `deltaClass=2` (to rev up the signal)
+
+```{r fig.width=9, fig.height=6}
+nObs <- 1000
+# How many predictors are associated with outcome:
+nClassVars <- 2
+# How many predictors are not:
+nNoiseVars <- 3
+# To modulate average difference between two classes' predictor values:
+deltaClass <- 2
+# Simulate dataset with interaction between attribute levels associated with the outcome:
+xyzTmp <- matrix(rnorm(nObs*(nClassVars+nNoiseVars)),nrow=nObs,ncol=nClassVars+nNoiseVars)
+classTmp <- 1
+for ( iTmp in 1:nClassVars ) {
+  deltaTmp <- sample(deltaClass*c(-1,1),nObs,replace=TRUE)
+  xyzTmp[,iTmp] <- xyzTmp[,iTmp] + deltaTmp
+  #ORIG: classTmp <- classTmp * deltaTmp
+  classTmp <- classTmp * deltaTmp
+}
+classTmp <- factor(classTmp > 0)
+#table(classTmp)
+pairs(xyzTmp,col=as.numeric(classTmp))
+```
+
+A very distinct display of how both **var 1** and **var 2** are tied to outcome, i.e. `nClassVars=2`, very well defined color (class value) clusters.
+
+
+Next, 1,000 observations again but `nClassVars=3` + `nNoiseVars=2` + `deltaClass=2` (one more "class var", one fewer noise var)
+
+```{r fig.width=9, fig.height=6}
+
+nObs <- 1000
+# How many predictors are associated with outcome:
+nClassVars <- 3
+# How many predictors are not:
+nNoiseVars <- 2
+# To modulate average difference between two classes' predictor values:
+deltaClass <- 2
+# Simulate dataset with interaction between attribute levels associated with the outcome:
+xyzTmp <- matrix(rnorm(nObs*(nClassVars+nNoiseVars)),nrow=nObs,ncol=nClassVars+nNoiseVars)
+classTmp <- 1
+for ( iTmp in 1:nClassVars ) {
+  deltaTmp <- sample(deltaClass*c(-1,1),nObs,replace=TRUE)
+  xyzTmp[,iTmp] <- xyzTmp[,iTmp] + deltaTmp
+  #ORIG: classTmp <- classTmp * deltaTmp
+  classTmp <- classTmp * deltaTmp
+}
+classTmp <- factor(classTmp > 0)
+#table(classTmp)
+pairs(xyzTmp,col=as.numeric(classTmp))
+```
+
+My (naive?) expectation was that the colors would continue to be well-defined for **var 1**, **var 2**, and that **var 3** pairings on those first two would also show the color separation. Obviously that didn't happen...
+
+
+# Sub-problem 4: (15 points): effect of **mtry**
+
+
+Parameter `mtry` in the call to `randomForest` defines the number of predictors randomly chosen to be evaluated for their association with the outcome at each split (please see help page for `randomForest` for more details).  By default for classification problem it is set as a square root of the number of predictors in the dataset.  Here we will evaluate the impact of using different values of `mtry` on the error rate by random forest.
+
+For `nObs=5000`, `deltaClass=2`, `nClassVars=3` and `nNoiseVars=20` generate data using the above approach, run `randomForest` on it with `mtry=2`, `5` and `10` and obtain corresponding test error for these three models.  Describe the impact of using different values of `mtry` on the test error rate by random forest and compare it to that by LDA/KNN. 
+
+
+---
+
+> For `nObs=5000`, `deltaClass=2`, `nClassVars=3` and `nNoiseVars=20` generate data using the above approach, run `randomForest` on it with `mtry=2`, `5` and `10` and obtain corresponding test error for these three models.  
+
+
+Begin by creating the train/test sets, train are at the new `nObs=5000` while the test set remains at 10,000. Next create a model based on Random Forest defaults, and then new ones for each of the described `mtry` levels. Printout includes confidence tables for each + error rates.
+
+```{r }
+train_p4 = sim_data(nObs=5000, deltaClass=2, nClassVars=3, nNoiseVars=20)
+test_p4 = sim_data(nObs=10000, deltaClass=2, nClassVars=3, nNoiseVars=20)
+
+rf_p4_mtry_default = rf_predict_table(train_p4, test_p4)
+rf_p4_mtry_default
+
+rf_p4_mtry2 = rf_predict_table(train_p4, test_p4, mtry_val=2)
+rf_p4_mtry2
+
+rf_p4_mtry5 = rf_predict_table(train_p4, test_p4, mtry_val=5)
+rf_p4_mtry5
+
+rf_p4_mtry10 = rf_predict_table(train_p4, test_p4, mtry_val=10)
+rf_p4_mtry10
+
+```
+
+
+
+> Describe the impact of using different values of `mtry` on the test error rate by random forest and compare it to that by LDA/KNN. 
+
+Create the LDA and KNN models
+
+```{r }
+lda_p4 = lda_predict_table(train_p4, test_p4)
+rng = sort(unique(floor(1.2^(1:28)))) 
+df_knn_p4 = knn_predict_multiple(train_p4, test_p4, knn_range=rng)
+```
+
+And present the results
+
+```{r fig.width=9, fig.height=6}
+err_lines = c(rf_p4_mtry_default$err_rate, rf_p4_mtry2$err_rate, rf_p4_mtry5$err_rate, rf_p4_mtry10$err_rate, lda_p4$err_rate)
+data_df = data.frame(type=c('RF default','RF mtry= 2', 'RF mtry= 5', 'RF mtry=10', 'LDA'), 
+                     err=err_lines,
+                     x_pos=1:5)
+
+plt_ok = (ggplot(df_knn_p4,aes(x=k,y=err))
+       + geom_point()+scale_x_log10()
+       + geom_hline(aes(yintercept = err, colour=type), data=data_df)
+       + ggtitle("KNN error rate "))
+
+lowest_err_row = df_knn_p4[which(df_knn_p4$err==min(df_knn_p4$err)),][1,]
+lowest_err_value = round(lowest_err_row$err, 4)
+lowest_err_k = lowest_err_row$k
+lowest_err_label = sprintf('lowest err:\n%f\nk=%d', lowest_err_row$err, lowest_err_k)
+
+plt = (ggplot(df_knn_p4,aes(x=k,y=err))
+  + geom_point()
+  + scale_x_log10(breaks=sort(c(round(seq(min(df_knn_p4$k), max(df_knn_p4$k), length.out=10)), lowest_err_k)))
+  + geom_hline(aes(yintercept = err, colour=type), data=data_df)
+  + geom_text(aes(x=x_pos, err, colour=type, label=err, vjust = -1), data=data_df) 
+  + geom_text(aes(lowest_err_k, lowest_err_value, label=lowest_err_label, vjust=-1))
+  + geom_text(aes(lowest_err_k, lowest_err_value, label='|', vjust=-3))
+  + ggtitle("KNN, LDA, RandomForest (multiple #variables) error rates"))
+
+plt             
+```
+
+The lowest level of `mtry` used for Random Forest in the plot was 2, which produces the highest of these `mtry` models. Next higher error rate among these is for `mtry=5`, at `r rf_p4_mtry5$err_rate`. A good step down (in a beneficial way) is the last one, `mtry=10`, produces error rate = `rrf_p4_mtry10$err_rate`. So for this dataset, trained on these train/test splits, increasing the `mtry` level is a good thing.  
+Including the results of an Random Forest model without any `mtry` value didn't really add much value to this particular dataset since for classification the number of variables sampled at each split would have been the square root of the total dependent variable count, i.e. $\sqrt23$, which is 4.796, only a hair under the 5 value that actually was used for one model.
+
+Once again LDA is producing the worst error rate, by a fair margin, and also once again KNN is returning the lowest error rate, at a relatively high level of $K$.
+
+
+
+
+

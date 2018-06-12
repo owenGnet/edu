@@ -1,0 +1,137 @@
+﻿<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8'>
+    <title>Final Project - movies</title>
+    <script type='text/javascript' src='https://d3js.org/d3.v3.min.js'></script>
+    <script src="" charset="utf-8"></script>
+    <link href="FP_movies.css" rel="stylesheet" type='text/css' />
+</head>
+<body>
+    <script type='text/javascript'>
+
+        var xAxis, yAxis;
+        var data;
+        var remaining = 2;
+        var loaded = 0;
+        var width = 1150, height = 555,
+                margin = { top: 20, right: 20, bottom: 20, left: 70 };
+        //uncomment below for scaled-down version, easier to work with on smaller screen
+        //width = 750; height = 400;
+        var svg = d3.select('body').append('svg')
+            .attr('width', width + margin.right + margin.left)
+            .attr('height', height + margin.top + margin.bottom)
+            .attr('class', 'frame');
+
+        //horizontal
+        var xMin = 1, xMax = 6;
+        var xScale = d3.scale.linear()
+            .domain([xMin, xMax])
+            .range([50, width]);
+
+        var yScale = d3.scale.linear()
+           .domain([1, 10])
+           .range([height, 40])
+
+        d3.csv('movie_SIMPLE_out_SHORT.csv', function (d) {
+            var row = {
+                title: d.title,
+                starAud: d.StarAud,
+                actual: d.rtAllCriticsRating,
+                predicted: d.predict
+            }
+            return row;
+        }, function (d) {
+            data = d;
+            drawStuff();
+        });
+
+        function drawStuff() {
+            xAxis = d3.svg.axis().scale(xScale).orient('bottom');
+            yAxis = d3.svg.axis().scale(yScale).orient('left');
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(0,' + height + ')')
+                .call(xAxis);
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(50,0)')
+                .call(yAxis);
+
+            svg.append("text").attr("x", 20).attr("y", 20)
+                .text("Star Power + Audience Rating").attr('class', 'axis-label');
+            svg.append("text").attr("x", 50).attr("y", height + 35)
+                .text("RT Critics Rating").attr('class', 'axis-label');
+
+            //legend
+            svg.append("rect").attr("x", 70).attr("y", 80)
+                .attr("height", 50).attr("width", 200).attr('class', 'legend');
+            svg.append("text").attr("x", 100).attr("y", 100)
+                .text("Actual RT Critic Rating").attr('class', 'axis-label');
+            svg.append("text").attr("x", 100).attr("y", 120)
+                .text("Predicted H20").attr('class', 'axis-label');
+            svg.append("circle").attr("cx", 90).attr("cy", 95)
+                .attr('r', 5).attr('class', 'actual');
+            svg.append("circle").attr("cx", 90).attr("cy", 115)
+                .attr('r', 5).attr('class', 'predicted');
+        
+            var dot_actual = svg.selectAll('circle-actual')
+                .data(data).enter().append('circle')
+                .attr('class', function (d) {
+                    return 'actual';
+                });
+
+                dot_actual.attr('cx', function (d) {
+                    return xScale(d.starAud);
+                })
+                 .attr('cy', function (d) {
+                     return yScale(d.actual);
+                 })
+                 .attr('r', function (d) {
+                     return 3;
+                 })
+                .append('title')
+                .text(function (d) {
+                    return '"' + d.title + '"\r\n' 
+                        + Math.round(d.starAud * 100) / 100
+                        + ' StarAud, actual RT Rating: '
+                        + Math.round(d.actual * 100) / 100;
+                });
+
+                var dot_pred = svg.selectAll('circle-predicted')
+                    .data(data).enter().append('circle')
+                    .attr('class', function (d) {
+                        return 'predicted';
+                    });
+
+                dot_pred.attr('cx', function (d) {
+                    return xScale(d.starAud);
+                })
+                 .attr('cy', function (d) {
+                     return yScale(d.predicted);
+                 })
+                 .attr('r', function (d) {
+                     return 3;
+                 })
+                .append('title')
+                .text(function (d) {
+                    return '"' + d.title + '"\r\n'
+                        + Math.round(d.starAud * 100) / 100
+                        + ' StarAud, actual RT Rating: '
+                        + Math.round(d.predicted * 100) / 100;
+                });
+
+                //H20 Flow, info from glm model
+                var coeff = 1.7855; 
+                var intercept = -0.5835; 
+                svg.append("line").attr("x1", xScale(xMin)).attr("y1", yScale(xMin * coeff + intercept))
+                    .attr("x2", xScale(xMax)).attr("y2", yScale(xMax * coeff + intercept))
+                    .attr('class', 'model');
+        };
+
+    </script>
+
+</body>
+</html>

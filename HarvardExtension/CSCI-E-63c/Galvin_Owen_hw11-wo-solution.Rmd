@@ -1,0 +1,581 @@
+---
+title: "CSCI E-63C Week 11 assignment"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(ISLR)
+library(e1071)
+library(randomForest)
+library(class)
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Preface
+
+This week assignment will explore behavior of support vector classifiers and SVMs (following the distinction made in ISLR) on banknote authentication dataset from UCI ML archive.  We worked with it on multiple occasions before (most recently two weeks ago evaluating performance of logistic regression, discriminant analysis and KNN on it):
+
+```{r dbaExample}
+dbaDat <- read.table("data/data_banknote_authentication.txt",sep=",")
+colnames(dbaDat) <- c("var","skew","curt","entr","auth")
+dbaDat$auth <- factor(dbaDat$auth)
+dim(dbaDat)
+summary(dbaDat)
+head(dbaDat)
+pairs(dbaDat[,1:4],col=as.numeric(dbaDat$auth))
+```
+
+Here we will use SVM implementation available in library `e1071` to fit classifiers with linear and radial (polynomial for extra points) kernels and compare their relative performance as well as to that of random forest and KNN.
+
+# Problem 1 (20 points): support vector classifier (i.e. using linear kernel) 
+
+Use `svm` from library `e1071` with `kernel="linear"` to fit classifier (e.g. ISLR Ch.9.6.1) to the entire banknote authentication dataset setting parameter `cost` to 0.001, 1, 1000 and 1 mln.  Describe how this change in parameter `cost` affects model fitting process (hint: the difficulty of the underlying optimization problem increases with cost -- can you explain what drives it?) and its outcome (how does the number of support vectors change with `cost`?) and what are the implications of that.  Explain why change in `cost` value impacts number of support vectors found. (Hint: there is an answer in ISLR.)  Use `tune` function from library `e1071` (see ISLR Ch.9.6.1 for details and examples of usage) to determine approximate value of cost (in the range between 0.1 and 100 -- the suggested range spanning ordes of magnitude should hint that the density of the grid should be approximately logarithmic -- e.g. 1, 3, 10, ... or 1, 2, 5, 10, ... etc.) that yields the lowest error in cross-validation employed by `tune`.  Setup a resampling procedure repeatedly splitting entire dataset into training and test, using training data to `tune` cost value and test dataset to estimate classification error. Report and discuss distributions of test errors from this procedure and selected values of `cost`.
+
+---
+
+> Use `svm` from library `e1071` with `kernel="linear"` to fit classifier (e.g. ISLR Ch.9.6.1) to the entire banknote authentication dataset setting parameter `cost` to 0.001, 1, 1000 and 1 mln.  
+
+
+Load in the dataset again, using the naming conventions that have been used in my previous assignments.
+
+```{r }
+data = read.table('./data/data_banknote_authentication.txt', sep=',')
+# * name appropriately data set attributes
+columns = c('variance','skewness','curtosis','entropy','y_class')
+colnames(data) = columns
+scaled_data = data.frame(scale(data[,1:4]), y_class=data$y_class)
+data$y_class = factor(data$y_class)
+scaled_data$y_class = factor(scaled_data$y_class)
+
+str(data)
+```
+
+
+Create the four models with varying costs, scaling the data at least prevents `WARNING: reaching max number of iterations` on `cost=1000`
+
+```{r }
+for (cost in c(0.001, 1, 1000, 1000000)){
+  svm_fit_linear = svm(y_class~., data=data, kernel='linear', cost=cost, scale=TRUE)
+  print(summary(svm_fit_linear))
+}
+```
+
+
+> Describe how this change in parameter `cost` affects model fitting process (hint: the difficulty of the underlying optimization problem increases with cost -- can you explain what drives it?) and its outcome (how does the number of support vectors change with `cost`?) and what are the implications of that.  Explain why change in `cost` value impacts number of support vectors found. (Hint: there is an answer in ISLR.)  
+
+As `cost` increases there are fewer and fewer support vectors since the width of the margin is decreasing. The increased values of `cost` parameter effectively tells the `svm` model to penalize misclassification more and more. This would generally be expected to decrease test error, as the model more closely fits the provided data (low bias, high variance), and in turn increase the test error as the model will be more and more likely to overfit the test data. Instead one needs to use cross validation or the like in order to generate a model that balances bias and variance.   
+The above output illustratest that the number of support vectors goes down as the cost increases. A low `cost` value results in a relatively wide margin, since violations to the margin are well tolerated. A wide margin will result in more support vectors since any observation lying on the wrong side of the margin is considered to be a support vector and the wider margin will include more of these violations. (Also, any observation directly on the margin is a support vector but that is less relevant to the increase/decrease in number of support vectors).
+
+
+> Use `tune` function from library `e1071` (see ISLR Ch.9.6.1 for details and examples of usage) to determine approximate value of cost (in the range between 0.1 and 100 -- the suggested range spanning ordes of magnitude should hint that the density of the grid should be approximately logarithmic -- e.g. 1, 3, 10, ... or 1, 2, 5, 10, ... etc.) that yields the lowest error in cross-validation employed by `tune`.
+
+
+Feed a series of `cost` values into `tune`
+
+```{r }
+rng = c(0.1,1,3,5,8,13,22,36,60,100)
+tune_out = tune(svm, y_class~., data=data, kernel='linear', scale=TRUE, ranges=list(cost=rng))
+tune_out
+```
+
+The `cost` value recommended by above process was `r tune_out$best.parameters$cost`.
+
+
+> Setup a resampling procedure repeatedly splitting entire dataset into training and test, using training data to `tune` cost value and test dataset to estimate classification error. Report and discuss distributions of test errors from this procedure and selected values of `cost`.
+
+Define `assess_prediction` function, created for previous assignments, has more than needed but seems the easiest way forward. Create a new `xvalBanknotesSvm` funtion based on similar cross validation functions for previous assignments. Run the latter function with 10-fold cross-validation and the series of `cost` values used for earlier `tune` example. 
+```{r }
+
+assess_prediction = function(truth, predicted, print_results=FALSE) {
+  # check for missing values (we are going to
+  # compute metrics on non-missing values only)
+  predicted = predicted[ ! is.na(truth) ]
+  truth = truth[ ! is.na(truth) ]
+  truth = truth[ ! is.na(predicted) ]
+  predicted = predicted[ ! is.na(predicted) ]
+  
+  NotNa=length(truth)
+  # how predictions align against known
+  # training/testing outcomes:
+  # TP/FP= true/false positives,
+  # TN/FN=true/false negatives
+  TP = sum(truth==1 & predicted==1)
+  TN = sum(truth==0 & predicted==0)
+  FP = sum(truth==0 & predicted==1)
+  FN = sum(truth==1 & predicted==0)
+  P = TP+FN # total number of positives in the truth data
+  N = FP+TN # total number of negatives
+  accuracy_pct = signif(sum(truth==predicted)*100/length(truth),3)
+  error_rate_pct = 100-accuracy_pct
+  sensitivity_pct = signif(100*TP/P,3)
+  specificity_pct = signif(100*TN/N,3)
+  precision_pct = signif(100*TP/(TP+FP),3)
+  false_discovery_pct = signif(100*FP/(TP+FP),3)
+  false_positive_rate_pct = signif(100*FP/N,3)
+  
+  if (print_results){
+    cat("Total cases that are not NA: ",
+    NotNa,"\n",sep="")
+    # overall accuracy of the test: how many cases
+    # (both positive and negative) we got right:
+    cat("Correct predictions (accuracy): ",
+      sum(truth==predicted),
+      "(",accuracy_pct,"%)\n",sep="")
+    cat("TPR (sensitivity)=TP/P: ", sensitivity_pct, "%\n", sep="")
+    cat("TNR (specificity)=TN/N: ", specificity_pct, "%\n", sep="")
+    cat("PPV (precision)=TP/(TP+FP): ", precision_pct, "%\n", sep="")
+    cat("FDR (false discovery)=1-PPV: ", false_discovery_pct, "%\n", sep="")
+    cat("FPR =FP/N=1-TNR: ", false_positive_rate_pct, "%\n", sep="")
+    
+    print('TP  TN  FP  FN')
+    print(paste0(TP, ' ', TN, ' ', FP, ' ', FN))
+  }
+  
+  return (list(NotNA=length(truth),
+              accuracy_pct=accuracy_pct,
+              error_rate_pct=error_rate_pct,
+              sensitivity_pct=sensitivity_pct,
+              specificity_pct=specificity_pct,
+              precision_pct=precision_pct,
+              false_discovery_pct=false_discovery_pct,
+              false_positive_rate_pct=false_positive_rate_pct))
+}
+
+
+xvalBanknotesSvm = function(data, nTries=20, kXval=5, costValues=1:5) {
+  retRes = NULL
+  for (costValue in costValues){
+    for ( iTry in 1:nTries ) {
+      # assign each observation to one of the kXval folds
+      xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+      measures <- NULL
+        for ( kFold in 1:kXval ) {
+          train = data[xvalFolds!=kFold,]
+          test = data[xvalFolds==kFold,]
+          # fit model on train data
+          svm_fit = svm(y_class~., data=train, kernel='linear', cost=costValue, scale=TRUE)
+          # predict on test
+          test_predict = predict(svm_fit, newdata=test)
+    
+        test_assessment_measures = assess_prediction(test$y_class, 
+                                                     test_predict, 
+                                                     print_results=FALSE)
+        
+        # accumulate test measurements over all cross-validation folds:
+        measures = rbind(measures, cbind(test_assessment_measures$error_rate_pct,
+                                                 test_assessment_measures$sensitivity_pct,
+                                                 test_assessment_measures$specificity_pct))
+        }
+      measure_means = colMeans(measures)
+      retRes = rbind(retRes, data.frame(sim=iTry, cost=costValue,
+                                 error_rate_pct=measure_means[1],
+                                 sensitivity_pct=measure_means[2],
+                                 specificity_pct=measure_means[3]))
+      }
+  }
+  retRes
+}
+
+rng = c(0.1,1,3,5,8,13,22,36,60,100)
+number_of_folds = 10
+df_out = xvalBanknotesSvm(scaled_data, kXval=number_of_folds, costValues=rng)
+```
+
+## Test error, SVM with linear kernel
+```{r fig.width=9, fig.height=6, echo=FALSE}
+p = ggplot(df_out, aes(x=factor(cost), y=error_rate_pct)) + geom_boxplot() 
+title = sprintf('Error rate across different cost values, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("cost") + ylab("Error Rate %")
+```
+
+Looking at the test erorrs across values of `cost`, we can see that as `cost` increases from 0.1 the error rate decreases rapidly (in relative terms - in absolute terms the test erorr is pretty low to begin with). The test error rates at around `cost` values of 3,5,8 is generally around the same level but lowest average occurs at `cost=3`, same as indicated by the `tune` function. After that error rate rises to around 1.2% and stays at around that level as cost increases from 13 through 100. 
+One obvious upshot is that it would probably be wisest to re-run the cross validation a few times with more `cost` values in the range of 2 to 10, to confirm 5 does in fact produce the best values.
+
+For visual comparison run a similar plot with content of `tune_out$performances` - of course there isn't the range of per-`cost` error rates to produce true box plots but the general shape of the output is a good match for the above plot.
+
+```{r }
+#plot(tune_out)
+p = ggplot(tune_out$performances, aes(x=factor(cost), y=error)) + geom_boxplot() 
+title = sprintf('Error rate across different cost values, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("Cost") + ylab("Error Rate %")
+```
+
+
+
+# Problem 2 (10 points): comparison to random forest
+
+Fit random forest classifier on the entire banknote authentication dataset with default parameters.  Calculate resulting misclassification error as reported by the confusion matrix in random forest output.  Explain why error reported in random forest confusion matrix represents estimated test (as opposed to train) error of the procedure.  Compare resulting test error to that for support vector classifier obtained above and discuss results of such comparison.
+
+---
+
+> Fit random forest classifier on the entire banknote authentication dataset with default parameters.
+
+Create the random forest model, using the scaled dataset for consistency, and output contents.
+
+```{r }
+set.seed(2)
+rf_fit = randomForest(formula=y_class~., data=scaled_data)
+rf_fit
+```
+
+>  Calculate resulting misclassification error as reported by the confusion matrix in random forest output. 
+
+Pull out the confusion matrix piece of the model and display error rate, which matches the OOB error rate reported (as a percentage) in the model itself.
+
+```{r }
+err_rate = function(tbl) {
+  return (1-sum(diag(tbl))/sum(tbl))
+}
+
+conf_mtrx = rf_fit$confusion[,1:2]
+rf_err_rate = err_rate(conf_mtrx)
+rf_err_rate
+```
+ 
+> Explain why error reported in random forest confusion matrix represents estimated test (as opposed to train) error of the procedure.  
+
+Random forests use bagging to create the final model and this involves repeated bootstrapped sampling of the data. Bootstrapping involves resampling the dataset with replacement, meaning that each bootstrapped sample will skip some of the observations, which in turn results in what is effectively leave-one-out cross-validation. So the "out of bag" error rate reported by random forest was actually determined using a process that mimicked cross-validation.
+
+> Compare resulting test error to that for support vector classifier obtained above and discuss results of such comparison.
+
+The error rate for random forest model becomes `r rf_err_rate*100`% when converted to a percentage. The `tune` function applied on `svm` had an error rate percent = `r tune_out$best.performance*100`%, while my k-fold cross-validation yielded an average error percent of `r colMeans(df_out[which(df_out$cost==5),])['error_rate_pct'][[1]]`%. All strike me as being rather low error rates but random forest obviously is the lowest. Also, no analysis of sensitivity vs. specificity has been conducted, e.g. given the background of this dataset it is possible we would want to favor discovering counterfeits at the expense of including some genuine banknotes in the the is-counterfeit bucket, with the idea that further analysis (costing more money/resources) could be done upon these to pull out the false positives.
+
+# Problem 3 (10 points): Comparison to cross-validation tuned KNN predictor
+
+Use convenience wrapper `tune.knn` provided by the library `e1071` on the entire dataset to determine optimal value for the number of the nearest neighbors 'k' to be used in KNN classifier.  Consider our observations in week 9 assignment when choosing range of values of `k` to be evaluated by `tune.knn`.  Setup resampling procedure similar to that used above for support vector classifier that will repeatedly: a) split banknote authentication dataset into training and test, b) use `tune.knn` on training data to determine optimal `k`, and c) use `k` estimated by `tune.knn` to make KNN classifications on test data.  Report and discuss distributions of test errors from this procedure and selected values of `k`, compare them to those obtained for random forest and support vector classifier above.
+
+---
+
+> Use convenience wrapper `tune.knn` provided by the library `e1071` on the entire dataset to determine optimal value for the number of the nearest neighbors 'k' to be used in KNN classifier.  Consider our observations in week 9 assignment when choosing range of values of `k` to be evaluated by `tune.knn`. 
+
+Use default values for `tune.knn`, the output of `$sampling` indicates the default sampling method = "10-fold cross validation". My results from week 9 indicated a relatively low $K$ was producing best results, somewhere in the general range of 1-10. I'll bump the upper limit up bit and run
+
+```{r }
+rng=1:15
+tune_knn_out = tune.knn(scaled_data[,1:4], scaled_data$y_class, k=rng)
+best_k = tune_knn_out$best.parameters$k
+tune_knn_out
+```
+
+> Setup resampling procedure similar to that used above for support vector classifier that will repeatedly: a) split banknote authentication dataset into training and test, b) use `tune.knn` on training data to determine optimal `k`, and c) use `k` estimated by `tune.knn` to make KNN classifications on test data.  
+
+Same cross validation approach, `tune` on the majority folds, predict on a KNN model using held-out testing fold with the $K$ value determined by `tune`. Average the test errors across the various $K$ values determined during the cross-validation process.
+
+```{r }
+
+xvalBanknotesKnn = function(data, nTries=20, kXval=5, knnValues=1:5) {
+  retRes = NULL
+  for ( iTry in 1:nTries ) {
+    # assign each observation to one of the kXval folds
+    xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+    measures <- NULL
+    for ( kFold in 1:kXval ) {
+      train = data[xvalFolds!=kFold,]
+      test = data[xvalFolds==kFold,]
+      
+      tune_knn_out = tune.knn(x=train[,1:4], y=train$y_class, k=knnValues)
+      best_k = tune_knn_out$best.parameters$k
+      #print(paste0('iTry: ', iTry, ' kFold: ', kFold, ' best_k: ', best_k))
+      test_predict = knn(train=train[,1:4], test=test[,1:4], k=best_k, cl=train$y_class)
+      test_assessment_measures = assess_prediction(test$y_class, 
+                                                   test_predict, 
+                                                   print_results=FALSE)
+      
+      # accumulate test measurements over all cross-validation folds:
+      measures = rbind(measures, cbind(test_assessment_measures$error_rate_pct,
+                                               test_assessment_measures$sensitivity_pct,
+                                               test_assessment_measures$specificity_pct,
+                                               best_k))
+      }
+    #measure_means = colMeans(measures)
+    colnames(measures) = c('error_rate_pct','sensitivity_pct','specificity_pct','k')
+    measures = data.frame(measures)
+    # average the test errors across k values
+    measure_means = aggregate(measures[,1:3], list(k=measures$k), mean)
+    retRes = rbind(retRes, data.frame(sim=iTry, measure_means))
+    }
+  
+  retRes
+}
+number_of_folds=10
+df_knn = xvalBanknotesKnn(scaled_data, nTries=20, kXval=number_of_folds, knnValues=1:15)
+```
+
+> Report and discuss distributions of test errors from this procedure and selected values of `k`, compare them to those obtained for random forest and support vector classifier above.
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+p = ggplot(df_knn, aes(x=factor(k), y=error_rate_pct, colour=as.factor(k))) + geom_boxplot() 
+title = sprintf('Error rate across k values, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("k") + ylab("Error Rate %")
+```
+
+The large number of rows in the aggregated `df_knn` means that across all nTries, different "best k" for the cross validation train/test splits was more the norm than the exception - if the same best k were chosen each time my aggregation would have collapsed the data much more
+
+Error rates displayed above are obviously quite low, 0% for several of the $K$ values. Among the lower $K$'s, which were actually selected by `tune` more often, the error rates have a decent range, from 0% up to 0.55% or so - this upper range being about what the random forest was delivering for its lowest error rate. The support class vector with the linear kernel was yet higher, 0.87% with cost=5 (which was the cost resulting in lowest test error and also the value recommended by `tune`).
+
+
+Counts of $K$ values, aggregated within each `iTry` - results are somewhat misleading but show the general pattern of which ones were selected most often by `tune`
+```{r }
+aggregate(df_knn$k, list(k=df_knn$k), length)
+```
+
+# Problem 4 (20 points): SVM with radial kernel
+
+## Sub-problem 4a (10 points): impact of $gamma$ on classification surface
+
+*Plot* SVM model fit to the banknote authentication dataset using (for the ease of plotting) *only variance and skewness* as predictors variables, `kernel="radial"`, `cost=1` and `gamma=1` (see ISLR Ch.9.6.2 for an example of that done with a simulated dataset).  You should be able to see in the resulting plot the magenta-cyan classification boundary as computed by this model.  Produce the same kinds of plots using 0.01 and 100 as values of `gamma` also.  Compare classification boundaries between these three plots and describe how they are impacted by the change in the value of `gamma`.  Can you trace it back to the role of `gamma` in the equation introducing it with the radial kernel in ISLR?
+
+---
+
+> *Plot* SVM model fit to the banknote authentication dataset using (for the ease of plotting) *only variance and skewness* as predictors variables, `kernel="radial"`, `cost=1` and `gamma=1` (see ISLR Ch.9.6.2 for an example of that done with a simulated dataset).  You should be able to see in the resulting plot the magenta-cyan classification boundary as computed by this model.  
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+svm_fit_radial_gamma1 = svm(y_class~variance+skewness, data=scaled_data, kernel='radial', cost=1, gamma=1)
+cat('gamma=1')
+plot(svm_fit_radial_gamma1, scaled_data[c('variance','skewness','y_class')])
+summary(svm_fit_radial_gamma1)
+```
+
+> Produce the same kinds of plots using 0.01 and 100 as values of `gamma` also.  
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+svm_fit_radial_gamma01 = svm(y_class~variance+skewness, data=scaled_data, kernel='radial', cost=1, gamma=0.01)
+print('gamma=0.01')
+plot(svm_fit_radial_gamma01, scaled_data[c('variance','skewness','y_class')])
+summary(svm_fit_radial_gamma01)
+
+svm_fit_radial_gamma100 = svm(y_class~variance+skewness, data=scaled_data, kernel='radial', cost=1, gamma=100)
+print('gamma=100')
+plot(svm_fit_radial_gamma100, scaled_data[c('variance','skewness','y_class')])
+summary(svm_fit_radial_gamma100)
+```
+
+
+> Compare classification boundaries between these three plots and describe how they are impacted by the change in the value of `gamma`.  Can you trace it back to the role of `gamma` in the equation introducing it with the radial kernel in ISLR?
+
+Looking at three plots in terms of increasing `gamma`, as opposed to the way in which they were presented above:  
+
+* `gamma`=0.01 has the simplest decision boundary, a faintly curved line that appears to do about as well as a straight line from something like a logistic regression model without any polynomial expansion would produce. It would be difficult for a boundary like this to capture much more of the class=1 red O points that are present toward the top of the middle sectoin but perhaps it could curve downwards on the upper left in order to properly classify some of the black **X** observations there.  
+* `gamma`=1 produces that reaches into the class=0 cyan colored space in order to grab the red O observations that are clustered in the middle. To the eye it looks like the boundary stretched to get more red O classified correctly at the expense of losing some **X** observations to misclassification.  
+* `gamma`=100 obviously results in the most complex decision boundary, not sure if a non-radial kernel could have done such a tight coupling to the data at hand (of course that's not saying much given my limited knowledge of various kernels). Either way the effectiveness of this model would definitely need to be checked via some train/test splits or other type of sampling/validation. As is one suspects it would have overfit the data and might not perform well on a test set.  
+
+In summary, `gamma`=0.01 creates a boundary that implies the source model is not very flexible at all, i.e. low variance but low bias. `gamma`=100 creates a complex model, likely with high variance but low bias. It followes that `gamma`=1 fits somewher in the middle of those two extremes. As `gamma` increases the definition of "closeness" becomes more restricted and only the points that are very close in distance, "nearest neighbors" essentially, are involved in the class prediction.
+
+
+## Sub-problem 4b (10 points): test error for SVM with radial kernel
+
+Similar to how it was done above for support vector classifier (and KNN), set up a resampling process that will repeatedly: a) split the entire dataset (using all attributes as predictors) into training and test datasets, b) use `tune` function to determine optimal values of `cost` and `gamma` and c) calculate test error using these values of `cost` and `gamma`.  You can start with `cost=c(1,2,5,10,20)` and `gamma=c(0.01,0.02,0.05,0.1,0.2)` as starting ranges to evaluate by `tune`, but please feel free to experiment with different sets of values and discuss the results of it and how you would go about selecting those ranges starting from scratch.  Present resulting test error graphically, compare it to that of support vector classifier (with linear kernel), random forest and KNN classifiers obtained above and discuss results of these comparisons. 
+
+---
+
+> Similar to how it was done above for support vector classifier (and KNN), set up a resampling process that will repeatedly: a) split the entire dataset (using all attributes as predictors) into training and test datasets, b) use `tune` function to determine optimal values of `cost` and `gamma` and c) calculate test error using these values of `cost` and `gamma`.  You can start with `cost=c(1,2,5,10,20)` and `gamma=c(0.01,0.02,0.05,0.1,0.2)` as starting ranges to evaluate by `tune`, but please feel free to experiment with different sets of values and discuss the results of it and how you would go about selecting those ranges starting from scratch.  
+
+
+Create a new function that does a `tune` against the train set for each k-fold cross validation set. The error rates will be averaged for each best-cost/best-gamma combination that is output from `tune` and then applied to the held-out test fold. Also put in an option to create the model based only on `variance` and `skewness`, the predictor values used in previous sub-problem.
+
+I've chosen to go with relatively low `nTries` and `kXval` simply because the computation was taking so long (and in terms of `kXval` I actually wanted some variation in the error rate results). For that same reason there wasn't much experimenting I could do with different `cost`/`gamma` ranges, though I do present the results of one experiment later on. If I were trying to come up with ranges that would work best from scratch I would use some kind of logarithmic set of numbers, as was discussed in Problem 1. After that it becomes a time/computational tradeoff but for the first pass I might a) look to see what the default values are for both parameters, and then b) pass in a very broad range of ~10 values (very small to maybe something around 100k) into both of `cost` and `gamma`, centered around the default values, assuming there are defaults,... and let the computer sit for a while, maybe read more about the literature of `svm` and see what more knowledgeable people recommend about selecting ranges. The results of the first series of tests should give a narrower ballpark by which to narrow the two ranges for further iterative tests that involve narrowing the ranges further (though still with a multiple break-points within the ranges) each time. Repeat as necessary, and computationally possible.
+
+```{r }
+
+xvalBanknotesSvmTuned = function(data, nTries=20, kXval=5, costValues=1:5, 
+                                 gammaValues=seq(0.1,0.5, length.out=5), useFull=TRUE) {
+  retRes = NULL
+    for ( iTry in 1:nTries ) {
+      # assign each observation to one of the kXval folds
+      xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+      print(paste0('progress check, iTry: ', iTry))
+      measures <- NULL
+        for ( kFold in 1:kXval ) {
+          train = data[xvalFolds!=kFold,]
+          test = data[xvalFolds==kFold,]
+          # always use full set of predictors for tuning
+          tune_svm_out = tune.svm(x=train[,1:4], y=train$y_class, kernel='radial',
+                                  cost=costValues, gamma=gammaValues)
+          best_cost = tune_svm_out$best.parameters$cost
+          best_gamma = tune_svm_out$best.parameters$gamma
+          # either the full set of predictors or only variance+skewness, as in Sub-problem 4a
+          if ( useFull==TRUE) {
+            svm_fit = svm(y_class~., data=train, kernel='radial', cost=best_cost, gamma=best_gamma)
+          } else {
+            svm_fit = svm(y_class~variance+skewness, data=train, kernel='radial', 
+                        cost=best_cost, gamma=best_gamma)
+          }
+          
+          test_predict = predict(svm_fit, newdata=test)
+          test_assessment_measures = assess_prediction(test$y_class, 
+                                                     test_predict, 
+                                                     print_results=FALSE)
+        
+        # accumulate test measurements over all cross-validation folds:
+        measures = rbind(measures, cbind(test_assessment_measures$error_rate_pct,
+                                         test_assessment_measures$sensitivity_pct,
+                                         test_assessment_measures$specificity_pct,
+                                         best_cost, best_gamma))
+        }
+      colnames(measures) = c('error_rate_pct','sensitivity_pct','specificity_pct','cost','gamma')
+      measures = data.frame(measures)
+      measure_means = aggregate(measures[,1:3], list(cost=measures$cost, gamma=measures$gamma), mean)
+      #measure_counts = aggregate(measures[,1:3], list(cost=measures$cost, gamma=measures$gamma), length)
+      #print(measure_counts)
+      #measure_means = aggregate(. ~ cost+gamma, data=measures, 
+      #                           FUN = function(x) c(mn = mean(measures), n = length(measures) ) )
+
+    retRes = rbind(retRes, data.frame(sim=iTry, measure_means))
+      
+  }
+  retRes
+}
+
+cost_values=c(0.01, 1)
+gamma_values=c(0.01, 1)
+cost_values=c(1,2,5,10,20) 
+gamma_values=c(0.01,0.02,0.05,0.1,0.2)
+number_of_folds = 3
+number_of_tries = 10
+df_svm_tuned = xvalBanknotesSvmTuned(scaled_data, nTries=number_of_tries, kXval=number_of_folds,
+                                     costValues=cost_values, gammaValues=gamma_values, useFull=TRUE)
+
+```
+
+
+
+> Present resulting test error graphically, 
+
+Plot the results of above calculations, with a legend that indicates which average error rate is linked to which combination of cost, gamma values that the `tune` function output for cross-validation iteration. It would have been nice to include a "count" of how many iterations formed the basis for the averaged error rate, e.g. maybe the same cost/gamma combination was recommended for 95% of the runs and that wouldn't be obvious from the plot.
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+cost_gamma = paste0(df_svm_tuned$cost,', ',df_svm_tuned$gamma)
+p = ggplot(df_svm_tuned, aes(x=factor(cost_gamma), y=error_rate_pct, colour=cost_gamma)) + geom_boxplot() 
+title = sprintf('Error rate across cost/gamma values, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab('cost, gamma') + ylab("Error Rate %")
+```
+
+> compare it to that of support vector classifier (with linear kernel), random forest and KNN classifiers obtained above and discuss results of these comparisons. 
+
+On at least some of my test runs the cross validation for above resulted in average test errors that were most often zero, "perfect accuracy". Of course I'm concerned there is an error in the code but best I can do right now is compare vs. the plot that my code just generated, which may not bear much resemblance to the plot in the final rendered html  
+
+* average error rate around 0.55% when cost/gamma=1/0.1, obviously selected multiple times because there is a true box plot with a max error rate around 1% and min at 0%
+* cost/gamm=1,0.2 shows a couple of runs at 0.3% and then some also at 0%  
+* remaining cost/gamma: 2/0.1, 2/0.2, 5/0.1, 5/0.2 all show a flat horizontal line with test error % = 0  
+
+The SVM with linear kernel, and multiple cost values, showed a striking decrease in test error when cost began to increase from 0.1, bottoming out at around cost = 3 or 5 and then increasing and flattening off at 1.2% once cost param hit 13 or so. My random forest models returned an error rate percent around 0.58%, better than the low of 0.87% from linear SVM with cost=5, though of course only cost param was altered for those tests. The tuning of KNN had trouble agreeing on a "best $K$" but while some of those k-folds yielded average test errors around 0.2%, others reported 0% test error - similar to what we are seeing in SVM plot above.  
+
+---
+
+One more expirement, run similar calculations but for `svm` model that will only be based on `variance` and `skewness` and narrowly defined set of `cost` and `gamma` values.
+
+```{r }
+cost_values=c(0.01, 1)
+gamma_values=c(0.01, 1, 100)
+number_of_folds = 3
+number_of_tries = 10
+df_svm_tuned_subset = xvalBanknotesSvmTuned(scaled_data, nTries=number_of_tries, kXval=number_of_folds,
+                                     costValues=cost_values, gammaValues=gamma_values, useFull=FALSE)
+
+cost_gamma = paste0(df_svm_tuned_subset$cost,', ', df_svm_tuned_subset$gamma)
+p = ggplot(df_svm_tuned_subset, aes(x=factor(cost_gamma), y=error_rate_pct, colour=cost_gamma)) + geom_boxplot() 
+title = sprintf('subset of predictors, error rate across cost/gamma values, %d-fold cv', number_of_folds)
+p + ggtitle(title) + xlab('cost, gamma') + ylab("Error Rate %")
+```
+
+In my first run at least the same `cost`,`gamma` was chosen each time: 1, 1  
+The first plot from **Sub-problem 4a**,  `variance` and `skewness` only, was for an `svm` with `cost=1` and `gamma=1`.
+
+
+
+
+# Extra 10 points problem: SVM with polynomial kernel
+
+Repeat what was done above (plots of decision boundaries for various interesting values of tuning parameters and test error for their best values estimated from training data) using `kernel="polynomial"`.   Determine ranges of `coef0`, `degree`, `cost` and `gamma` to be evaluated by `tune`.  Present and discuss resulting test error and how it compares to linear and radial kernels and those of random forest and KNN.
+
+
+---
+
+> Repeat what was done above (plots of decision boundaries for various interesting values of tuning parameters and test error for their best values estimated from training data) using `kernel="polynomial"`.  Determine ranges of `coef0`, `degree`, `cost` and `gamma` to be evaluated by `tune`.  
+
+
+At this point it seems likely a different sampling strategy would have been appropriate but a little too late to change. The number of folds and `nTries` has been brought down in below so that things can actually complete on my laptop in reasonable amount of time. Same thing applies to the ranges input for the various tuning params - I would have used more values in the passed-in ranges but the cost in cpu time was too great.
+
+```{r }
+xvalBanknotesSvmPoly = function(data, nTries=20, kXval=5) {
+  retRes = NULL
+    for ( iTry in 1:nTries ) {
+      # assign each observation to one of the kXval folds
+      xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+      print(paste0('progress check, iTry: ', iTry))
+      measures <- NULL
+        for ( kFold in 1:kXval ) {
+          train = data[xvalFolds!=kFold,]
+          test = data[xvalFolds==kFold,]
+
+          # create some ranges based around the default values for each
+          coef0_values = c(0, 0.01, 0.1) #1, 10, 30) # default 0
+          degree_values = c(1, 3, 5) #, 9, 30) # default 3
+          cost_values = c(0.1, 1, 10) # default 1
+          gamma_values=c(0.01, 0.1, 0.5) # default based on nrows 1/dim(train)[2]
+          tune_svm_out = tune.svm(x=train[,1:4], y=train$y_class, kernel='polynomial',
+                                  coef0=coef0_values,
+                                  degree=degree_values,
+                                  gamma=gamma_values,
+                                  cost=cost_values) 
+
+          best_coef0 = tune_svm_out$best.parameters$coef0
+          best_degree = tune_svm_out$best.parameters$degree
+          best_cost = tune_svm_out$best.parameters$cost
+          best_gamma = tune_svm_out$best.parameters$gamma
+          #print(tune_svm_out$best.parameters)
+          
+          # either the full set of predictors or only variance+skewness, as in Sub-problem 4a
+          svm_fit = svm(y_class~., data=train, kernel='polynomial', 
+                        coef0=best_coef0, degree=best_degree, cost=best_cost, gamma=best_gamma)
+          
+          test_predict = predict(svm_fit, newdata=test)
+          test_assessment_measures = assess_prediction(test$y_class, 
+                                                     test_predict, 
+                                                     print_results=FALSE)
+        
+        # accumulate test measurements over all cross-validation folds:
+        measures = rbind(measures, cbind(test_assessment_measures$error_rate_pct,
+                                         test_assessment_measures$sensitivity_pct,
+                                         test_assessment_measures$specificity_pct,
+                                         best_cost, best_gamma, best_coef0, best_degree))
+        }
+      colnames(measures) = c('error_rate_pct','sensitivity_pct','specificity_pct','cost','gamma',
+                             'coef0', 'degree')
+      measures = data.frame(measures)
+      measure_means = aggregate(measures[,1:3], list(cost=measures$cost, gamma=measures$gamma, coef0=measures$coef0, degree=measures$degree), mean)
+
+    retRes = rbind(retRes, data.frame(sim=iTry, measure_means))
+      
+  }
+  retRes
+}
+
+
+number_of_folds = 5
+number_of_tries = 7
+df_svm_tuned_poly = xvalBanknotesSvmPoly(scaled_data, nTries=number_of_tries, kXval=number_of_folds)
+                                     
+```
+
+
+> Present and discuss resulting test error and how it compares to linear and radial kernels and those of random forest and KNN.
+
+Plot out test error averages at each cost/gamma/coef0/degree that was selected by `tune` as best for a particular training set.
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+params = paste0(df_svm_tuned_poly$cost,', ',df_svm_tuned_poly$gamma,',',df_svm_tuned_poly$coef0,',',df_svm_tuned_poly$degree)
+p = ggplot(df_svm_tuned_poly, aes(x=factor(params), y=error_rate_pct, colour=params)) + geom_boxplot() 
+title = sprintf('Error rate across tuning params, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab('cost, gamma, coef0, degree') + ylab("Error Rate %")
+```
+
+
+
+
+---
+

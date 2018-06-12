@@ -1,0 +1,47 @@
+﻿/*simple border around edge of primary svg*/ 
+.frame {
+    border: 1px solid dimgray;
+}
+
+/*the actual x/y axes lines */
+.axis {
+  fill: none;
+  stroke: dimgray;
+  stroke-width: 1; 
+}
+
+/*affects the tick mark values on axes*/
+.axis text {
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+    font-size: small;
+    fill: gray;
+    stroke: none;
+}
+
+/*same with the axes text labels, e.g. 'RT Critics Rating' */
+text.axis-label {
+    fill: black;
+    font-size: medium;
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+}
+
+/*predicted value dots, will be on the line so reduce opacity*/
+circle.predicted {
+    fill: #FF5872; /*red*/
+    opacity: 0.4;
+}
+/*actual/true value dots*/
+circle.actual  {    
+    fill: #30DCEC; /*blue*/
+}
+
+/*square around legend*/
+rect.legend {
+    opacity: 0.10;
+}
+
+/*linear model straight line*/
+line.model  {    
+    stroke: red;
+    stroke-width: 1; 
+}

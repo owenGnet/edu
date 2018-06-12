@@ -1,0 +1,53 @@
+﻿/*simple border around edge of primary svg*/ 
+.frame {
+    border: 1px solid dimgray;
+}
+
+/*the actual x/y axes lines */
+.axis {
+  fill: none;
+  stroke: dimgray;
+  stroke-width: 1; 
+}
+
+/*affects the tick mark values, i.e. 100,200,300, etc. on x axis*/
+.axis text {
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+    font-size: small;
+    fill: gray;
+    stroke: none;
+}
+
+/*same with the axes text labels, e.g. 'Horsepower' */
+text.axis-label {
+    fill: black;
+    font-size: medium;
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+}
+
+
+/*predicted value dots*/
+circle.predicted {
+    fill: #FF5872; /*red*/
+}
+/*actual/true value dots*/
+circle.actual  {    
+    fill: #30DCEC; /*blue*/
+}
+
+/*square around legend*/
+rect.legend {
+    opacity: 0.10;
+}
+
+/*linear model straight line*/
+line.model  {    
+    stroke: gray;
+    stroke-width: 1; 
+}
+
+
+
+
+
+

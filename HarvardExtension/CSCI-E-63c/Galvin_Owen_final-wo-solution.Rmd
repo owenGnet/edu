@@ -1,0 +1,1150 @@
+---
+title: 'CSCI E-63C: Final Exam'
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(gridExtra)
+library(leaps)
+library(glmnet)
+library(reshape2)
+library(randomForest)
+library(e1071)
+
+# suppress glm.fit warnings
+options(warn=-1)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preface
+
+For the final exam/project we will develop classification models using several approaches and compare their performance on a new dataset -- so-called "Census Income" from UCI ML.  It is available at UCI ML web site, but so that we are not at the mercy of UCI ML availability, there is also a local copy of it in our website in Canvas as a zip-archive of all associated files.  Among other things, the description for this dataset also presents performance (prediction accuracy) observed by the dataset providers using variety of modeling techniques -- this supplies a context for the errors of the models we will develop here.
+
+Please note that the original data has been split up into training and test subsets, but there doesn't seem to be anything particular about that split, so we might want to pool those two datasets together and split them into training and test as necessary ourselves. As you do that, please check that the attribute levels are consistent between those two files.  For instance, the categorized income levels are indicated using slightly different notation in their training and test data.   By now it should be quite straightforward for you to correct that when you pool them together.
+
+Also, please note that there is non-negligible number of rows with missing values that for most analyses cannot be included without modification in the computation.  Please decide how you want to handle them and proceed accordingly.  The simplest and perfectly acceptable approach would be to exclude those observations from the rest of the analyses, but if you have time and inclination to investigate the impact of imputing them by various means, you are welcome to try.
+
+Attribute called "final weight" in the dataset description represents demographic weighting of these observations.  Please disregard it for the purposes of this assignment.
+
+Additionally, several attributes in this dataset are categorical variables with more than two levels (e.g. native country, occupation, etc.).  Please make sure to translate them into corresponding sets of dummy indicator variables for the methods that require such conversion (e.g. PCA) -- R function `model.matrix` can be convenient for this, instead of generating those 0/1 indicators for each level of the factor manually (which is still perfectly fine).  Some of those multi-level factors contain very sparsely populated categories -- e.g. occupation "Armed-Forces" or work class "Never-worked" -- it is your call whether you want to keep those observations in the data or exclude also on the basis that there is not enough data to adequately capture the impact of those categories. Feel free to experiment away!
+
+Among the multi-level categorical attributes, native country attribute has the largest number of levels -- several folds higher than any other attribute in this dataset -- some of which have relatively few observations.  This associated increase in dimensionality of the data may not be accompanied by a corresponding gain of resolution -- e.g. would we expect this data to support the *difference* in income between descendants from Peru and Nicaragua, for example, or from Cambodia and Laos?  Please feel free to evaluate the impact of inclusion and/or omission of this attribute in/from the model and/or discretizing it differently (e.g. US/non-US, etc.).
+
+Lastly, the size of this dataset can make some of the modeling techniques run slower than what we were typically encountering in this class.  You may find it helpful to do some of the exploration and model tuning on multiple random samples of smaller size as you decide on useful ranges of parameters/modeling choices, and then only perform a final run of fully debugged and working code on the full dataset.  Please see also the afterword below on the computational demands of this problem set.
+
+# Problem 1: univariate and unsupervised analysis (20 points)
+
+Download and read "Census Income" data into R and prepare graphical and numerical summaries of it: e.g. histograms of continuous attributes, contingency tables of categorical variables, scatterplots of continuous attributes with some of the categorical variables indicated by color/symbol shape, etc.  Perform principal components analysis of this data (do you need to scale it prior to that? how would you represent multilevel categorical attributes to be used as inputs for PCA?) and plot observations in the space of the first few principal components with subjects' gender and/or categorized income indicated by color/shape of the symbol.  Perform univariate assessment of associations between outcome we will be modeling and each of the attributes (e.g. t-test or logistic regression for continuous attributes, contingency tables/Fisher exact test/$\chi^2$ test for categorical attributes).  Summarize your observations from these assessments: does it appear that there is association between outcome and predictors? Which predictors seem to be more/less relevant?
+
+---
+
+
+### NOTE:  
+I don't write much R at all in my current job (data engineer) but I've had reason to review projects written in R and many of them take advantage of `tidyverse` related libraries and I've started to do the same with these assignments, though my usage can be ad-hoc and inconsistent.  
+
+> Download and read "Census Income" data into R 
+
+The "test" data file comes with an extraneous text line at top, set `skip=1` to ignore that line. For both data files:  
+
+* data is really separated by comma + space, use `strip.white` to trim the leading space during import  
+* examination of raw data reveals `?` is used to represted either unknown or unavailable data, pass `na.strings='?'` so that those come in as true `NA` values  
+* ~~`as.is=TRUE` will result in character columns remaining as such instead of being automatically translated as factors (which I may choose to do on a per-variable basis later on)~~  
+* after further review I actually want most/all of the character columns to be treated as factors - they all have a limited number of possible values (distinct `native_country` values is a bit high, deal with that later) and strike me as true categorical vairables  
+
+
+```{r }
+# set up column list, replace dashes with underscore because that is what I personally prefer
+#  (and I'm not sure if the hyphenated versions would be valid in R anyway)
+data_columns = c('age',
+  'workclass',
+  'fnlwgt',
+  'education',
+  'education_num',
+  'marital_status',
+  'occupation',
+  'relationship',
+  'race',
+  'sex',
+  'capital_gain',
+  'capital_loss',
+  'hours_per_week',
+  'native_country',
+  'y_income')
+  
+test_csv = read.table('./CensusIncome/adult.test', sep=',', header=FALSE, 
+                      #as.is=TRUE, 
+                      quote='', skip=1, col.names=data_columns, 
+                      strip.white=TRUE, na.strings='?')
+
+
+# read in the other file, 
+data_csv = read.table('./CensusIncome/adult.data', sep=',', header=FALSE, 
+                      #as.is=TRUE, 
+                      quote='', col.names=data_columns, 
+                      strip.white=TRUE, na.strings='?')
+```
+
+
+Display structure of the "test" data 
+```{r }
+str(test_csv)
+```
+
+And compare to that of train, though note that this dataset is 2x the size of test data, where I would expect proportions would normally be expected to be reversed, i.e. a larger test set than train. On the other hand I don't know details on how the files came to be and don't really need to worry about it.
+```{r }
+str(data_csv)
+```
+
+Both sets of data came in with the same columns (and number of columns of course), same datatypes, should be safe to directly combine. Normally we would also want to at least run a `summary` on both datasets before combining, to make sure they contained similar data, e.g. by comparing `mean`/`min`/`max` etc, otherwise we would be concerned the data came from different sources or time periods and pooling directly might not be appropriate. The instructions in the **Preface** directly address this concern though, so making a single dataset should be safe. Likewise the  **Preface** mentions that many observations contain `NA` and I'm going to ahead and drop any rows with an `NA`, pending possible future imputation, at least for the numeric columns.
+
+`TODO:` as time permits investigate imputation of `NA` numeric values, would likely continue to skip any observations with `NA` in any character column
+
+Drop the `NA` rows and take this opportunity to drop the `finlwgt` variable, which instructions say can be disregarded. Also set `y_income` as the **first** column as that will likely help with future modeling.  
+End with a `summary` of our intermediate dataset.
+
+```{r }
+data_orig = rbind(test_csv, data_csv)
+nrow_before = nrow(data_orig)
+print(sprintf('all rows count: %d', nrow_before))
+data_orig = na.omit(data_orig)
+nrow_after = nrow(data_orig)
+print(sprintf('exclude rows with any NA values, rows count: %d', nrow_after))
+
+data_orig = data_orig %>% 
+  dplyr::select(-fnlwgt)
+
+data_orig = data_orig %>%
+  dplyr::select(y_income, everything())
+
+summary(data_orig)
+```
+
+Removing `NA` rows resulted in dropping `r nrow_before-nrow_after` rows, approximately `r round((nrow_before-nrow_after)/nrow_before*100,0)`% of the data. Unsurprisingly this matches the percentage mentioned in one of the files that contains descriptions of the dataset.
+
+But the `summary` results on `y_income` reveal a problem, a little bit of digging reveals that the raw text values for the class/income variable are different between the two original files, with the `test` file containing values that terminate with a period (or maybe it was the lines themselves that were terminated with a period, doesn't matter much now that they are in R). Run code below to conform values, e.g. replacing "<=50K." with "<=50K"
+
+```{r }
+data_orig = data_orig %>%
+  mutate(y_income = factor(str_replace(y_income, '\\.', '')))
+
+str(data_orig$y_income)
+```
+
+The new `str` indicates we are down to 2 levels on `y_income`, as expected.
+
+Per the note in the **Preface**, `native_country` should probably be cleaned up somehow since it has 41 levels. Perform aggregation on the dataset based on country, report on number-of-observations per country and also `mean` value of "observations <= 50k" where the factor levels for the calculation have been set such that income <= 50k = 0 and incom > 50k = 1.
+
+```{r }
+country_agg = data_orig %>%
+  group_by(native_country) %>% 
+  summarise(cnt = n(), avg = mean(as.numeric(y_income)-1)) %>% 
+  arrange(avg)
+
+print.data.frame(country_agg)
+```
+
+We can see that indeed the number of observations from the United States is much larger than even the number of all other countries combined. My expectation in the `mean` calculation had been that those countries with more rows > 50k would have base currency values on the higher end of the scale, e.g. the U.S., England, France, Germany would have high "average" 50k values and countries with low GDP, e.g. Haiti, Laos, Honduras would cluster toward the low end. Then I could bucket the countries into two or three base-income groups. But either the income values have already been normalized, or perhaps the dropped `fnlwgt` values would have provided corrective balancing. Either way that approach to re-classifying the countries isn't going to work out. 
+
+But I'll give the approach mentioned in the **Preface** a try, inserting a new `is_us` column that indicates if row belongs to United States.   
+At this time I'll also consider my data manipulation and cleaning to be (mostly) finished and set `data` as the variable holding the primary dataframe.
+
+```{r }
+data = data_orig %>%
+  mutate(is_us = factor(native_country=='United-States'))
+```
+
+
+> and prepare graphical and numerical summaries of it: e.g. histograms of continuous attributes, contingency tables of categorical variables, scatterplots of continuous attributes with some of the categorical variables indicated by color/symbol shape, etc.  
+
+An important component of this dataset is revealed by a simple count on the `y_income` values
+```{r }
+count(data, y_income)
+```
+
+So we see there are 3x observations with income <= 50k vs. > 50k, i.e. the lower income observations make up 25% of the total count.
+
+Of the remaining variables 5 are continuous variables:`age`,`education_num`,`capital_gain`,`capital_loss`,`hours_per_week` 
+
+```{r }
+
+h = hist(data$age, main='age', col=rgb(0,1,0,0.2), xlab='age', breaks=16)
+
+```
+
+
+Display a couple of histograms for the distribution of `age` and `education_num` values, in what is effectively a stacked bar chart format - the darker green values represent percent of values in a given bin that have incomes > 50k while the light green height is for those in that bin with income <= 50k.
+
+```{r fig.width=9, fig.height=4 }
+col_low_income = rgb(0.7,1,0.7)
+col_high_income = rgb(0,0.5,0)
+q_age = (qplot(data$age, binwidth = 5, fill=data$y_income, main='age')
+  + scale_fill_manual(values=c(col_low_income, col_high_income))
+  + theme(legend.position='top')
+  + xlab('age'))
+q_education_num = (qplot(data$education_num, binwidth=1
+           , fill=data$y_income, main='education_num')
+  + scale_fill_manual(values=c(col_low_income, col_high_income)) #, guide=FALSE)
+  + theme(legend.position='top')
+  + xlab('education_num'))
+grid.arrange(q_age, q_education_num, ncol=2)
+
+# plots = vector('list', 5)
+# plots[[1]] = q_age
+# plots[[2]] = q_education_num
+# num_cols = floor(sqrt(length(plots)))
+# do.call('grid.arrange', c(plots, ncol=num_cols))
+```
+
+The distribution in the `age` chart shows that the cohorts containing highest ratio of >50k observations occur at a later age than the absolute peak at around 35 years of age, which isn't surprising as the traditional "peak earning years" in the U.S. are normally around 40-55 and so many of the observations are from the United States. In the `education_num` chart we see a bimodal distribution with two peaks. Comparing the numeric `education_num` values to categorical `education` column it appears the first peak centers around "HS-grad = 9" and "Some-college=10". The second peak is at "Bachelors=13" and is more interesting insofar as the number of observations in that bin (and the one after it for "Masters") with high income levels takes up a much greater proportion of the total bin height, vs. related breakdowns for the 9/10 bins.
+
+Now for the remaining continuous variables: `capital_gain`,`capital_loss`,`hours_per_week` 
+
+```{r fig.width=9, fig.height=8 }
+
+q_capital_gain = (qplot(data$capital_gain, binwidth = 10000, fill=data$y_income, main='capital_gain')
+  + scale_fill_manual(values=c(col_low_income, col_high_income))
+  + theme(legend.position='top')
+  + xlab('capital_gain'))
+
+q_capital_loss = (qplot(data$capital_loss, binwidth=1000
+           , fill=data$y_income, main='capital_loss')
+  + scale_fill_manual(values=c(col_low_income, col_high_income))
+  + theme(legend.position='top')
+  + xlab('capital_loss'))
+
+q_hours_per_week = (qplot(data$hours_per_week, binwidth=1
+           , fill=data$y_income, main='hours_per_week')
+  + scale_fill_manual(values=c(col_low_income, col_high_income))
+  + theme(legend.position='top')
+  + xlab('hours_per_week'))
+
+grid.arrange(q_capital_gain, q_capital_loss, q_hours_per_week, ncol=2)
+```
+
+Short version: none of these charts seem say much in terms of `y_income` class, especially because we have no definition of the capital_* variables.  
+But perhaps the overall distribution at least shows some significant trends, where almost all `capital_gain` and `capital_loss` observations are in that first bucket. And there is a very strong spike in the `hours_per_week`, a look at underlying data indicates it at hours = 40, which shouldn't be a surprise.
+
+Tried a few scatterplots but he discrete nature of the numeric variables made them less than informative.
+
+Here is another version of `capital_gain`, inserted after I'd done much of the modeling. The key here is to display only the rows with `capital_gain` > 0
+```{r fig.width=9, fig.height=6}
+#plot(data$capital_loss, data$capital_gain, pch=19
+#     ,col=ifelse(data$y_income == '<=50K', col_low_income, col_high_income))
+data_with_capital_gain = data %>% filter(capital_gain > 0) 
+q_capital_gain2 = (qplot(data_with_capital_gain$capital_gain, binwidth = 1000,
+                         fill=data_with_capital_gain$y_income, 
+                         main=sprintf('capital_gain > 0, only %d observations', nrow(data_with_capital_gain)))
+  + scale_fill_manual(values=c(col_low_income, col_high_income))
+  + theme(legend.position='top')
+  + xlab('capital_gain'))
+q_capital_gain2
+```
+
+Strong preponderance for high-income outcomes when capital gains are present, moreso with higher values. True that this is a subset < 10% of all observations but since there are so many more low-income observations in the dataset, maybe \*spoiler\* `captial_gain` will be important for some of the models.
+
+
+Next, a few contingency tables on the categorical variables. I'm not sure how much the raw numbers tell us though, since there are about 3x as many <= 50k observations vs. > 50k, so I've also made weighted versions that attempt to make up for this.
+
+**workclass** 
+```{r }
+table(data$y_income, data$workclass) 
+print('roughly proportional to number of observations')
+table(data$y_income, data$workclass) * c(1,3)
+```
+
+As an example the raw numbers make it look like if a person works for local government they is a very good chance they make < 50k while the weighted version shows the split is actually much more even. And initially those that are self-employed seem to be close to split on their earnings around the 50k pivot value but the 2nd table shows that value should mean they are much more likely to be making > 50k.
+
+I'll skip the `education` field as there appears to be a one-to-one match against the (continuous) `education_num` variable. 
+
+**marital_status** 
+```{r }
+table(data$y_income, data$marital_status) 
+print('')
+print('roughly proportional to number of observations')
+table(data$y_income, data$marital_status) * c(1,3)
+```
+Some of these numbers make intuitive sense, those `Never-married` are likely younger and early in their careers, observations with `Widowed` are more likely to be older and therefore retired, with lower income.
+
+**sex** 
+many more Male participants in this dataset vs. female
+```{r }
+count(data, data$sex)
+
+table(data$y_income, data$sex) 
+print('roughly proportional to number of observations')
+table(data$y_income, data$sex) * c(1,3)
+```
+
+**in_us** 
+```{r }
+table(data$y_income, data$is_us) 
+print('')
+print('roughly proportional to number of observations')
+table(data$y_income, data$is_us) * c(1,3)
+```
+
+> Perform principal components analysis of this data (do you need to scale it prior to that? how would you represent multilevel categorical attributes to be used as inputs for PCA?) 
+
+(After proceeding with the problem set for a bit I've decided to drop the `native_country` variable entirely - it is adding confusion to the results and plots without contributing much from what I can tell, and of course there is the `is_us` proxy column that is going to remain.)
+
+```{r }
+print(ncol(data))
+data = subset(data, select = -native_country)
+print(ncol(data))
+```
+
+These values are all over the map in terms of units of measurement (hours per week, age, capital gain - is that in U.S. dollars?) so I think scaling will be a requirement without needing to prove the need for such by plotting out means vs. variance etc.   
+For the factor variables, `model.matrix` will be used for specifying matrix of predictors by creating dummy variables for these categorical predictors.
+
+
+In below first scale any numeric columns, and then use `model.matrix` to create a series of dummy variables for the variables that are stored as factors. Call `prcomp` to create the PCA model and display plot indicating how much variance is explained by the first several PC. 
+
+```{r }
+data_scaled = data %>% mutate_if(is.numeric, scale)
+# data_dummied lacks y_income, a good thing, also remove that first column, want to ignore "(Intercept)" 
+data_dummied = model.matrix(y_income~., data_scaled)[,-1]
+ 
+pr_out = prcomp(data_dummied) #, scale=TRUE)
+plot(pr_out, xlab='dimensions', main='SCALED: variance explained by first several PC', col='green')
+```
+
+Look at the largest loadings for the first and second PC:
+
+```{r }
+sort(abs(pr_out$rotation[,1]), decreasing=TRUE)[1]
+sort(abs(pr_out$rotation[,2]), decreasing=TRUE)[1]
+```
+
+Good, those values at least seem to make intuitive sense, where one would expect both variables to contribute significantly to determination of income greater or less than 50k.
+
+> and plot observations in the space of the first few principal components with subjects' gender and/or categorized income indicated by color/shape of the symbol.  
+
+I don't actually think this first plot is part of the answer, especially seeing as how `pr_out$x` has 98 columns, bit here it is anyway.
+
+```{r fig.width=10, fig.height=10 }
+biplot(pr_out, pc.biplot=TRUE, main='scaled data, PC1 & PC2', xlabs=rep('+', dim(pr_out$x)[1]), col=c('cyan','black') ) 
+```
+`hours_per_week` direction is "due West" while `education_num` is more Southwest
+
+
+Zooming in helps a little bit in terms of readability.
+```{r fig.width=10, fig.height=10 }
+biplot(pr_out, pc.biplot=TRUE, main='scaled data, PC1 & PC2', 
+       xlabs=rep('+', dim(pr_out$x)[1]), col=c('cyan','black'), xlim=c(-2,2), ylim=c(-0.5, 0.5) ) 
+```
+
+Now on to the   
+  > gender and/or categorized income
+  
+Plot high income as dark green, <= 50k as light green. Use the traditional Mars & Venus symbols to indicate gender. 
+
+```{r fig.width=10, fig.height=10 }
+plot(pr_out$x[,1:2], 
+     main='PCA with colors by income and shapes (\u2640, \u2642) by gender',
+     col=c(ifelse(data_orig$y_income == '<=50K', col_low_income, col_high_income)),
+     cex=1.0,
+     pch=ifelse(data_orig$sex == 'Male', -0x2642L, -0x2640L))
+
+```
+
+And we can see the higher income points all in an almost-separate cluster in the corner. Looks like it may have more males than females in that area.
+
+To really bring out the contrast need to go with something a bit less aesthetically pleasing
+
+```{r fig.width=10, fig.height=10 }
+plot(pr_out$x[,1:2], 
+     main='PCA with colors by income and shapes by gender', 
+     col=ifelse(data_orig$sex == 'Male', 'red', 'blue'),
+     cex=1.0,
+     pch=ifelse(data_orig$y_income == '<=50K', 1, 17))
+
+```
+That makes it really obvious, that most of the higher-income cluster in the sparse cluster in the corner come from observations with `sex`=`Male`, colored in red.
+
+
+> Perform univariate assessment of associations between outcome we will be modeling and each of the attributes (e.g. t-test or logistic regression for continuous attributes, contingency tables/Fisher exact test/$\chi^2$ test for categorical attributes).  
+
+#### categorical
+
+Perform $\chi^2$ tests on each of the categorical variables.
+
+**workclass**
+```{r }
+chisq.test(table(data$y_income, data$workclass))
+```
+
+**education**
+```{r }
+chisq.test(table(data$y_income, data$education))
+```
+
+**marital_status**
+```{r }
+chisq.test(table(data$y_income, data$marital_status))
+```
+
+**occupation**
+```{r }
+chisq.test(table(data$y_income, data$occupation))
+```
+
+**race**
+```{r }
+chisq.test(table(data$y_income, data$race))
+```
+
+**relationship**
+```{r }
+chisq.test(table(data$y_income, data$relationship))
+```
+
+**sex**
+```{r }
+chisq.test(table(data$y_income, data$sex))
+```
+
+**is_us**
+```{r }
+chisq.test(table(data$y_income, data$is_us))
+```
+
+#### continuous
+
+Results of a `t.test` between the outcome variable and age:
+```{r }
+t.test(as.numeric(data$y_income), data$age)
+```
+
+but I don't really understand how this would work with a categorical outcome variable. Subtracting 1 from the default `as.numeric` values makes a little more sense, shows that ~25% of all observations are > 50k
+
+```{r }
+t.test(as.numeric(data$y_income)-1, data$age)
+# data %>% count(y_income)
+```
+and yes, the "mean" of `y_income` won't be anywhere near the mean of `age` or any of the other numeric categories. I'll try something else that I'm more likely to understand.
+
+
+Go ahead and run a series of simple logistic regression models, `y_income` vs. each of the continuous variables. Also tried `plot` on one or two but the results made very little sense to me.
+
+**age**
+```{r }
+lr_age_fit = glm(y_income~age, data=data, family=binomial)
+summary(lr_age_fit)
+```
+
+**education_num**
+```{r }
+lr_edu_fit = glm(y_income~education_num, data=data, family=binomial)
+summary(lr_edu_fit)
+
+cor.test(as.numeric(data$y_income), data$education_num)
+```
+
+**capital_gain**
+```{r }
+lr_cg_fit = glm(y_income~capital_gain, data=data, family=binomial)
+summary(lr_cg_fit)
+```
+
+**capital_loss**
+```{r }
+lr_cl_fit = glm(y_income~capital_loss, data=data, family=binomial)
+summary(lr_cl_fit)
+```
+
+**hours_per_week**
+```{r }
+lr_hours_fit = glm(y_income~hours_per_week, data=data, family=binomial)
+summary(lr_hours_fit)
+```
+
+
+> Summarize your observations from these assessments: does it appear that there is association between outcome and predictors? Which predictors seem to be more/less relevant?
+
+Starting with the simple logistic regression results above, each of the continuous variables, on their own, appear to be highly significant, all with vanishingly small p-values. Then jumping back up a bit to the $\chi^2$ tests on the categorical variables... same thing, very small p-values. With the exception of `workclass`, which seemed to encounter an error of some kind, all variables are reported as being definitely associated with the outcome. Looking at the slopes in the logistic regression results, `education_num` is the  numeric variable with strongest relevance... but these results are all on unscaled data so comparing the slopes directly doesn't make sense.
+
+
+# Problem 2: logistic regression (25 points)
+
+Develop logistic regression model of the outcome as a function of multiple predictors in the model.  Which variables are significantly associated with the outcome?  Test model performance on multiple splits of data into training and test subsets, summarize it in terms of accuracy/error, sensitivity/specificity and compare to the performance of other methods reported in the dataset description.
+
+---
+
+> Develop logistic regression model of the outcome as a function of multiple predictors in the model.  
+
+I spent significant effort trying to come up with a subset of predictors that would be most effective in the final model. The next several steps cover those attempts.
+
+Pair-wise plot of scaled numerical predictors, colored by `y_income`. Most of the numeric variables are discrete, as opposed to truly continous. Resulting plots are of limited use.
+
+```{r fig.width=8, fig.height=8 }
+columns_is_numeric = unlist(lapply(data, is.numeric))
+numeric_cols = names(data)[columns_is_numeric]
+
+
+data_scaled_numeric = data_scaled %>% select_if(is.numeric)
+#data_scaled_numeric = cbind(data_scaled$y_income, data_scaled_numeric)
+pairs(data_scaled_numeric, pch=19, cex=0.4, 
+      col=c(ifelse(data_scaled$y_income == '<=50K', col_low_income, col_high_income)), 
+      main='colored by y_income')
+
+```
+
+
+Try some variable selection methods to see if they all agree on a set of predictors. Data used for the logistic regression (and subsequent statistical models) will be the scaled version, as discussed for PCA.
+
+** warning re `exhaustive`, skip
+```{r }
+# code from my midterm, no doubt originating in a lecture or other sample code 
+summaryMetrics <- NULL
+whichAll <- list()
+my_methods = c('backward', 'forward', 'seqrep')
+for ( myMthd in my_methods ) {
+  method_metrics = NULL
+  rsRes <- regsubsets(y_income~., data_scaled, method=myMthd, nvmax=ncol(data_scaled)-1)
+  summRes <- summary(rsRes)
+  whichAll[[myMthd]] <- summRes$which
+  for ( metricName in c('rsq','rss','adjr2','cp','bic') ) {
+    summaryMetrics <- rbind(summaryMetrics,
+      data.frame(method=myMthd,metric=metricName,
+                nvars=1:length(summRes[[metricName]]),
+                value=summRes[[metricName]]))
+    method_metrics = rbind(method_metrics,
+      data.frame(method=myMthd,metric=metricName,
+                nvars=1:length(summRes[[metricName]]),
+                value=summRes[[metricName]]))
+    
+  }
+}
+ggplot(summaryMetrics,aes(x=nvars,y=value,shape=method,colour=method)) + geom_path() + geom_point() + facet_wrap(~metric,scales='free') +   theme(legend.position='top')
+```
+
+Obviously the `sequential replacement` bounces around a bit but beyond that there is agreement that more predictors are more better, which in then end doesn't mean much. Don't think it makes sense to look further into exactly _which_ variables were selected at each step...
+
+Changed my mind while doing a double-check on everything, isn't much effort. The results are mostly un-illuminating though. The only point that seems to agree with later analysis is that `captial_gain` is selected relatively early in each of the methods. Without benefit of hindsight don't know if I would have flagged that though.
+```{r fig.height = 8, fig.width = 10}
+old.par <- par(mfrow=c(1,1),ps=9,mar=c(5,7,2,1))
+for ( myMthd in names(whichAll) ) {
+  image(1:nrow(whichAll[[myMthd]]),
+        1:ncol(whichAll[[myMthd]]),
+        whichAll[[myMthd]],xlab="N(vars)",ylab="",
+        xaxt="n",yaxt="n",breaks=c(-0.5,0.5,1.5),
+        col=c("white","gray"),main=myMthd)
+  axis(1,1:nrow(whichAll[[myMthd]]),rownames(whichAll[[myMthd]]))
+  axis(2,1:ncol(whichAll[[myMthd]]),colnames(whichAll[[myMthd]]),las=2)
+}
+```
+
+Go ahead and generate logistic regression model on all predictors.
+
+```{r }
+glm_fit = glm(y_income~., data=data_scaled, family=binomial)
+summary(glm_fit)
+```
+
+> Which variables are significantly associated with the outcome? 
+
+Looking at the base variable that covers any of the various factor levels, the below are reported as most associated with outcome:  
+
+* age  
+* workclass  
+* education  
+* marital_status  
+* occupation  
+* relationship  
+* sex  
+* capital_gain  
+* capital_loss  
+* hours_per_week  
+* is_us  
+
+Among the numeric variables, `age`, `capital_gain`, `capital_loss`, `hours_per_week` are all positively correlated with an income > 50k. The categorical variables represent a span, depending on a the value of a particular level, e.g. the higest correlations to outcome > 50k, which are all positive, come from `education` values of `Doctorate` and `Prof-school`. Levels < 11th are (weakly) associated with opposite outcome, income <= 50k.
+
+
+Next up, create a lasso model for logistic regression, initially at least to examine variable selection further.
+```{r }
+x = model.matrix(y_income~., data_scaled)[,-1]
+y = data_scaled[,'y_income']
+lasso_fit_lr = glmnet(x, y, alpha=1, family='binomial')
+plot(lasso_fit_lr)
+```
+Without labels the plot doesn't reveal much, though it is pretty and at least reveals that there doesn't appear to be anything too unusual taking place. 
+
+
+Determine best lambda values using misclassification error
+```{r }
+cv_lasso_fit_lr = cv.glmnet(x, y, family='binomial', type.measure='class')
+plot(cv_lasso_fit_lr)
+
+```
+
+Interested in the dashed line in the middle, the one to the right, which represents $\lambda$ that is one standard error away from absolute minimum misclassification error, should help reduce overfitting vs. the absolute lowest.
+
+```{r }
+lowest_error_plus_one_sd_lambda = cv_lasso_fit_lr$lambda.1se
+# this wil tell us which of the dashed lines is the one we want
+print(log(lowest_error_plus_one_sd_lambda))
+
+predict(lasso_fit_lr, type='coefficients', s=lowest_error_plus_one_sd_lambda)
+```
+
+Details are different but the base variable list, in terms of non-zeroed predictors, matches what the all-predictors `glm` produced, though now `race` is appearing. I'm going to stick with those in common, so the `glm` will be performed on: `age+workclass+education+marital_status+occupation+relationship+sex+capital_gain+capital_loss+hours_per_week+is_us`  
+(I felt safe trying lasso for variable selection but that is it - want to stick with a simple `glm` in terms of answering this problem).
+
+
+> Test model performance on multiple splits of data into training and test subsets, summarize it in terms of accuracy/error, sensitivity/specificity 
+
+Import the `assess_prediction` function I've used for previous assignments, based on `assess.prediction` from lecture slides. (In hindsight would have been preferable to updated to handle categorical input, instead I wind up repeatedly converting values before sending to the function.)
+
+```{r }
+assess_prediction = function(truth, predicted, print_results=FALSE) {
+  # check for missing values (we are going to
+  # compute metrics on non-missing values only)
+  predicted = predicted[ ! is.na(truth) ]
+  truth = truth[ ! is.na(truth) ]
+  truth = truth[ ! is.na(predicted) ]
+  predicted = predicted[ ! is.na(predicted) ]
+  
+  NotNa=length(truth)
+  # how predictions align against known
+  # training/testing outcomes:
+  # TP/FP= true/false positives,
+  # TN/FN=true/false negatives
+  TP = sum(truth==1 & predicted==1)
+  TN = sum(truth==0 & predicted==0)
+  FP = sum(truth==0 & predicted==1)
+  FN = sum(truth==1 & predicted==0)
+  P = TP+FN # total number of positives in the truth data
+  N = FP+TN # total number of negatives
+  accuracy_pct = signif(sum(truth==predicted)*100/length(truth),3)
+  error_rate_pct = 100-accuracy_pct
+  sensitivity_pct = signif(100*TP/P,3)
+  specificity_pct = signif(100*TN/N,3)
+  precision_pct = signif(100*TP/(TP+FP),3)
+  false_discovery_pct = signif(100*FP/(TP+FP),3)
+  false_positive_rate_pct = signif(100*FP/N,3)
+  
+  if (print_results){
+    cat("Total cases that are not NA: ",
+    NotNa,"\n",sep="")
+    # overall accuracy of the test: how many cases
+    # (both positive and negative) we got right:
+    cat("Correct predictions (accuracy): ",
+      sum(truth==predicted),
+      "(",accuracy_pct,"%)\n",sep="")
+    cat("TPR (sensitivity)=TP/P: ", sensitivity_pct, "%\n", sep="")
+    cat("TNR (specificity)=TN/N: ", specificity_pct, "%\n", sep="")
+    cat("PPV (precision)=TP/(TP+FP): ", precision_pct, "%\n", sep="")
+    cat("FDR (false discovery)=1-PPV: ", false_discovery_pct, "%\n", sep="")
+    cat("FPR =FP/N=1-TNR: ", false_positive_rate_pct, "%\n", sep="")
+    
+    print('TP  TN  FP  FN')
+    print(paste0(TP, ' ', TN, ' ', FP, ' ', FN))
+  }
+  
+  return (list(NotNA=length(truth),
+              accuracy_pct=accuracy_pct,
+              error_rate_pct=error_rate_pct,
+              sensitivity_pct=sensitivity_pct,
+              specificity_pct=specificity_pct,
+              precision_pct=precision_pct,
+              false_discovery_pct=false_discovery_pct,
+              false_positive_rate_pct=false_positive_rate_pct))
+}
+
+```
+
+
+And the core of below cross validation is from functions I've used for various previous assignments. Define and call, evaluating logistic regression model described above.
+
+```{r }
+xvalCensusIncome = function(data, nTries=20, kXval=5) {
+  retRes = NULL
+  #set.seed(63)
+  for ( iTry in 1:nTries ) {
+    # assign each observation to one of the kXval folds
+    xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+
+      measures <- NULL
+      for ( kFold in 1:kXval ) {
+        train = data[xvalFolds!=kFold,]
+        test = data[xvalFolds==kFold,]
+        # fit on the kept-folds
+        #all predictors: glm_fit = glm(y_income~., data=train, family=binomial)
+        
+        # use the variables selected by both glm and lasso, leaving out race
+        glm_fit = glm(y_income~age+workclass+education+marital_status+occupation+relationship+sex+capital_gain+capital_loss+hours_per_week+is_us, data=train, family=binomial)
+        # predict on the held-out fold
+        glm_predict = predict(glm_fit, newdata=test, type='response')
+        
+        test_predict = ifelse(glm_predict > 0.5, 1, 0)
+        test_y_income_num = ifelse(test$y_income == '>50K', 1, 0)
+        test_assessment_measures = assess_prediction(test_y_income_num,
+                                                     test_predict,
+                                                     print_results=FALSE)
+        ## keep y_income as a factor... only accuracy works w/o mod to assess_prediction
+        # y_income_vals = levels(data_scaled$y_income)
+        # test_predict = ifelse(glm_predict > 0.5, y_income_vals[1], y_income_vals[2])
+        # test_assessment_measures = assess_prediction(test$y_income, 
+        #                                      test_predict, 
+        #                                      print_results=FALSE)
+
+                
+        # accumulate test measurements over all cross-validation folds:
+        measures = rbind(measures, cbind(test_assessment_measures$accuracy_pct,
+                                                 test_assessment_measures$sensitivity_pct,
+                                                 test_assessment_measures$specificity_pct))
+      }
+      #print(measures)
+      measure_means = colMeans(measures)
+      #print(measure_means)
+      retRes = rbind(retRes,
+                      data.frame(sim=iTry, 
+                                 accuracy_pct=measure_means[1],
+                                 sensitivity_pct=measure_means[2],
+                                 specificity_pct=measure_means[3]))
+    
+  }
+  retRes
+}
+
+number_of_folds = 5
+number_of_tries = 15
+df_out = xvalCensusIncome(data_scaled, kXval=number_of_folds, nTries=number_of_tries)
+```
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+# easier to change the results than to change the underlying data population methods
+df_out_melted = melt(df_out, id.vars=c('sim'))
+
+p = ggplot(df_out_melted, aes(x=variable, y=value, colour=variable)) + geom_boxplot() 
+title = sprintf('Performance measures, logistic regression, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("measure type") + ylab("measure value %")
+```
+
+Each of the measures shows relatively little variation across the runs, height of box plot is almost non-existent.  
+Mean values for each of the performance measures:  
+
+* accuracy: `r round(mean(df_out$accuracy_pct),2)`%  
+* sensitivity: `r round(mean(df_out$sensitivity_pct),2)`%  
+* specificity: `r round(mean(df_out$specificity_pct),2)`%  
+
+Most notable is the gap between (low) sensitivity and (high) specificity results, indicating the model is misclassifying a number of `>50k` observations as being low income. One straightforward area to look into would be adjusting the cutoff between the two classes, which is currently set at 0.5.
+
+> and compare to the performance of other methods reported in the dataset description.
+
+Below are the error rate numbers from the `adult.names.txt` files - I also originally calculated using error rate percent but changed to accuracy to narrow the range on the y axis for boxplots and reveal as much variation in results as possible.
+
+```
+|    Algorithm               Error
+| -- ----------------        -----
+| 1  C4.5                    15.54
+| 2  C4.5-auto               14.46
+| 3  C4.5 rules              14.94
+| 4  Voted ID3 (0.6)         15.64
+| 5  Voted ID3 (0.8)         16.47
+| 6  T2                      16.84
+| 7  1R                      19.54
+| 8  NBTree                  14.10
+| 9  CN2                     16.00
+| 10 HOODG                   14.82
+| 11 FSS Naive Bayes         14.05
+| 12 IDTM (Decision table)   14.46
+| 13 Naive-Bayes             16.12
+| 14 Nearest-neighbor (1)    21.42
+| 15 Nearest-neighbor (3)    20.35
+| 16 OC1                     15.04
+```
+
+The average error rate percent from my logistic regression results, `r round(mean(100-df_out$accuracy_pct),2)`%, compares favorably, less than the average (~16%) of the various results displayed above.
+
+# Problem 3: random forest (25 points)
+
+Develop random forest model of the categorized income. Present variable importance plots and comment on relative importance of different attributes in the model.  Did attributes showing up as more important in random forest model also appear as significantly associated with the outcome by logistic regression?  Test model performance on multiple splits of data into training and test subsets, compare test and out-of-bag error estimates, summarize model performance in terms of accuracy/error, sensitivity/specificity and compare to the performance of other methods reported in the dataset description.
+
+---
+
+> Develop random forest model of the categorized income. 
+
+Use the `randomForest` function and include `importance=TRUE`, going to need those values shortly. Also define the simple `err_rate` function and use it help report on out-of-bag accuracy percent, which is really just `(1-error_rate)*100`
+```{r }
+
+set.seed(2)
+rf_fit = randomForest(formula=y_income~., data=data_scaled, importance=TRUE)
+rf_fit
+
+err_rate = function(tbl) {
+  return (1-sum(diag(tbl))/sum(tbl))
+}
+
+conf_mtrx = rf_fit$confusion[,1:2]
+rf_err_rate = err_rate(conf_mtrx)
+rf_accuracy_pct = (1-rf_err_rate)*100
+print('OOB "accuracy" percent')
+rf_accuracy_pct
+```
+
+> Present variable importance plots and comment on relative importance of different attributes in the model.
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+varImpPlot(rf_fit)
+```
+
+In the left plot, where Accuracy is the applicable performance measure, we can see that `capital_gain` is considered far and away the most important variable for increasing accuracy. Then there is a large step downward before `occupation`/`capital_loss`/`age` are considered about the same in terms of contributing to better accuracy. The rest of variables are reported as being less and less important, in a generally linear fashion, ending up with `is_us` being the least important contributor to accuracy.  
+The Gini related plot on the left shows more of a grouping of the variables, where the removal of any of a set of given variables would lead to similar decrease in Gini index. The most import variables here are `capital_gain` and `relationship`, then the next most important group sharing similar levels of impact are `age` and `marital_status`, followed by standalone `occupation`. The "least important" grouping consists of `race`/`sex`/`is_us`.
+
+> Did attributes showing up as more important in random forest model also appear as significantly associated with the outcome by logistic regression?  
+
+The most important attributes, per the charts above, aren't particularly consistent beyond the most important, `capital_gain` (`age` is also rated strongly impactful in both), and the least important, `is_us` (`race` is also among the least important in both).  
+The logistic regression model indications are more trouble to interpret as, between the numeric variables and all the various levels of the categorical variables, almost all of the variables reported signifigance codes at the highest `***` level. Actually, going back and accounting for dropped columns, e.g. `native_country`, `fnlwgt`, all the variables are effectively "very significant"
+
+Let's see if the ranking of the highest (absolute value) raw coefficient values from the "all predictors" logistic regression model tells us anything - those models were all produced on scaled version of the data, comparison should be a valid one:
+```
+variable	                          Coefficients
+educationProf-school              	2.89910486
+educationDoctorate                	2.87327473
+marital_statusMarried-AF-spouse   	2.61989664
+capital_gain                      	2.39046919
+educationMasters                  	2.29305927
+marital_statusMarried-civ-spouse  	2.2859178
+educationBachelors                	1.97629904
+educationAssoc-acdm               	1.4239198
+educationAssoc-voc                	1.32213701
+educationSome-college             	1.20808431
+```
+Notable that `capital_gain` is in there towards the top, where it was "most important" for the `varImpPlot` plots above. Other than that there isn't much agreement, though the variable-level pairings mean we aren't really seeing that many variables. `marital_status` is in the top-coefficients list and also toward the top of the Gini-measured important variables.
+
+Anything from the lasso logistic regression model (with $\lambda$ one standard error away from lowest misclassification error) I had prepared for variable selection?
+```
+variable	                          Coefficients
+marital_statusMarried-civ-spouse  	1.85874405
+capital_gain                      	1.78495835
+marital_statusMarried-AF-spouse   	1.46890125
+occupationFarming-fishing         	-0.8076922
+relationshipWife                  	0.76232865
+occupationOther-service           	-0.7024397
+education_num                     	0.70089098
+occupationExec-managerial         	0.66273767
+relationshipOwn-child             	-0.56586192
+sexMale                           	0.48191455
+```
+Nope, doesn't even agree too much with the "all predictors" model.  
+Well not much beyond `capital_gain` again... its repeated signifigance is somewhat surprising insofar as < 10% of the observations have a non-zero value in this column (though of course the number is much > 10% when filtering down to only the >50k rows).
+
+
+> Test model performance on multiple splits of data into training and test subsets, compare test and out-of-bag error estimates, summarize model performance in terms of accuracy/error, sensitivity/specificity 
+
+Cross validation again, record both out-of-bag error (accuracy) and accuracy on the individual test sets.
+
+```{r }
+
+xvalCensusIncomeRF = function(data, nTries=20, kXval=5) {
+  retRes = NULL
+  for ( iTry in 1:nTries ) {
+    print(paste0('progress check, iTry: ', iTry))
+    # assign each observation to one of the kXval folds
+    xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+      measures <- NULL
+      for ( kFold in 1:kXval ) {
+        print(paste0('progress check, kFold: ', kFold))
+        train = data[xvalFolds!=kFold,]
+        test = data[xvalFolds==kFold,]
+        # fit on the kept-folds
+        # rf_fit = randomForest(formula=y_income~., data=train)
+        # test_pred=predict(rf_fit, newdata=test)
+        rf_fit = randomForest(train[,-1], train[,1])
+        test_pred = predict(rf_fit, newdata=test[,-1])
+        
+        # convert the out-of-bag error into "accuracy" equivalent
+        conf_mtrx = rf_fit$confusion[,1:2]
+        rf_err_rate = err_rate(conf_mtrx)
+        rf_oob_accuracy_pct = (1-rf_err_rate)*100
+      
+        # convert to numeric for sake of assess_prediction
+        test_pred_num=ifelse(test_pred == '>50K', 1, 0)
+        test_y_income_num = ifelse(test$y_income == '>50K', 1, 0)
+      
+        test_assessment_measures = assess_prediction(test_y_income_num,
+                                                     test_pred_num,
+                                                     print_results=FALSE)
+        
+        # accumulate test measurements over all cross-validation folds:
+        measures = rbind(measures, cbind(test_assessment_measures$accuracy_pct,
+                                                 rf_oob_accuracy_pct,
+                                                 test_assessment_measures$sensitivity_pct,
+                                                 test_assessment_measures$specificity_pct))
+      }
+      
+      #print(measures)
+      measure_means = colMeans(measures)
+      #print(measure_means)
+      retRes = rbind(retRes,
+                      data.frame(sim=iTry, 
+                                 accuracy_pct=measure_means[1],
+                                 oob_accuracy_pct=measure_means[2],
+                                 sensitivity_pct=measure_means[3],
+                                 specificity_pct=measure_means[4]))
+  }
+  retRes
+}
+
+number_of_folds = 5
+number_of_tries = 5
+# data_scaled[1:5000,]
+df_out_rf = xvalCensusIncomeRF(data_scaled, kXval=number_of_folds, nTries=number_of_tries)
+```
+
+Display results of cross validation, both types of accuracy + sensitivity + specificity.
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+# easier to change the results than to change the underlying data population methods
+df_out_rf_melted = melt(df_out_rf, id.vars=c('sim'))
+
+p = ggplot(df_out_rf_melted, aes(x=variable, y=value, colour=variable)) + geom_boxplot() 
+title = sprintf('Performance measures, random forest, %d-fold cross validation', number_of_folds)
+p + ggtitle(title) + xlab("measure type") + ylab("measure value %")
+
+```
+
+
+Mean values for each of the performance measures:  
+
+* accuracy (cv): `r round(mean(df_out_rf$accuracy_pct),2)`%  
+* accuracy (1 - out-of-bag error): `r round(mean(df_out_rf$oob_accuracy_pct),2)`%  
+* sensitivity: `r round(mean(df_out_rf$sensitivity_pct),2)`%  
+* specificity: `r round(mean(df_out_rf$specificity_pct),2)`%  
+
+Good accuracy measures and resembles logistic regression results insofar as the sensitivity measures are low and the specifity high. Very little difference between the out-of-bag error and the error rate returned by cross-validation (both have been converted to accuracty equivalent so that the `ylim` range could be zoomed in as much as possible). 
+
+> and compare to the performance of other methods reported in the dataset description.
+
+
+The average error rate (via the cross-validation) percent from my random forest results was `r round(mean(100-df_out_rf$accuracy_pct),2)`% while the related out-of-bag measure was similar at `r round(mean(100-df_out_rf$oob_accuracy_pct),2)`%. Looking at the numbers presented in earlier problem, these results are even better than those from the dataset description, which was "FSS Naive Bayes" at 14.05%.
+
+# Problem 4: SVM (25 points)
+
+Develop SVM model of this data choosing parameters (e.g. choice of kernel, cost, etc.) that appear to yield better performance.  Test model performance on multiple splits of data into training and test subsets, summarize model performance in terms of accuracy/error, sensitivity/specificity and compare to the performance of other methods reported in the dataset description.
+
+---
+
+> Develop SVM model of this data choosing parameters (e.g. choice of kernel, cost, etc.) that appear to yield better performance. Test model performance on multiple splits of data into training and test subsets, summarize model performance in terms of accuracy/error, sensitivity/specificity 
+
+
+First thing is to select a kernel, which in the name of sanity I am doing as a separate operation from any of the hyperparameter tuning. I'm operating under the assumption that the difference between the three kernels below, `linear`,`polynomial`,`radial`, will be reasonably obvious - either a given kernel will be appropriate to this dataset or it won't. Furthermore I'm sampling the input data to be 50% of the full observation count, in order to get adequate performance.  
+I did some research after my initial attempts at below and apparently for SVM models categorical data should be transformed into dummy variables, as had been done earlier with a scaled dataset, for PCA. The `data_dummied_final` below represents that dataset, with `y_income` (re-)inserted as first column. (Truthfully I saw very little difference in the performance measures, scaled dataset vs. the one-hot-encoded version).
+
+```{r p4a }
+
+# Tues 5pm, stop here
+
+set.seed(63)
+#svm_data = sample_frac(data_scaled, 0.5)
+# make a data.frame version of data with y_income as first column, categorical data one-hot encoded
+data_dummied_final = data.frame(y_income=data_scaled$y_income, data_dummied)
+svm_data = sample_frac(data_dummied_final, 0.5)
+
+for (kern in c('linear','polynomial', 'radial')){
+  for (i in 1:3) {
+    set.seed(i)
+    train = sample_frac(svm_data, 0.7)
+    train_idx = as.numeric(rownames(train))
+    test = svm_data[-train_idx,]
+    test_y_income_num = ifelse(test$y_income == '>50K', 1, 0)
+
+    svm_fit_kern = svm(y_income~., data=train, kernel=kern)
+    test_kern_predict = predict(svm_fit_kern, newdata=test)
+    test_pred_kern_num=ifelse(test_kern_predict == '>50K', 1, 0)
+    
+    cat('\n\n', rep('-', 25), '\n', sep='')
+    cat('pass: ', i, 'kernel: ', kern, '\n')
+    results = assess_prediction(test_y_income_num, 
+                           test_pred_kern_num, 
+                           print_results=TRUE)
+  }  
+}
+
+```
+
+There isn't a formal averaging going on, simply output the various performance measures for three runs on each of the three kernels. Instead of relying only on accuracy will also check the other measures to make sure there aren't any obvious disqualifying numbers.
+
+- `polynomial` is the clear loser, that one is right out  
+- `radial` is marginally better than `linear`, we have a winner (as long as the final results are competitive with other models from both the earlier problems and those reported in the dataset description - so far so good). Postscript: I did have run this with a few different `sample_frac` and `radial` was best each time, albeit by a small amount.
+
+Now that we have a kernel it is time to use `tune` to come up with the "best" hyperparameters (`coef0`, `degree`, `cost`, `gamma`), though the input-ranges are limited. The amount of data being sampled is also relatively small - this step alone takes a very long time, it is what it is.
+
+```{r svm_best_hp}
+svm_data = sample_frac(data_dummied_final, 0.20)
+
+# create some ranges based around the default values for each
+coef0_values = c(0, 0.01, 0.1) #1, 10, 30) # default 0
+degree_values = c(1, 3, 5) #, 9, 30) # default 3
+cost_values = c(0.1, 1, 10) # default 1
+gamma_values=c(0.01, 0.1, 0.5) # default based on nrows 1/dim(train)[2]
+
+tune_svm_out = tune.svm(x=svm_data[,-1], y=svm_data$y_income, kernel='radial',
+                        coef0=coef0_values,
+                        degree=degree_values,
+                        gamma=gamma_values,
+                        cost=cost_values) 
+
+best_coef0 = tune_svm_out$best.parameters$coef0
+best_degree = tune_svm_out$best.parameters$degree
+best_cost = tune_svm_out$best.parameters$cost
+best_gamma = tune_svm_out$best.parameters$gamma
+
+print(tune_svm_out$best.parameters)
+
+```
+
+
+Run some cross validation using the `coef0`, `degree`, `cost`, `gamma` values determined by `tune.svm` above. 
+
+```{r }
+svm_data = sample_frac(data_dummied_final, 0.40)
+
+xvalCensusIncomeSvm = function(data, coef0, degree, cost, gamma, nTries=20, kXval=5) {
+  retRes = NULL
+    for ( iTry in 1:nTries ) {
+      # assign each observation to one of the kXval folds
+      xvalFolds = sample(rep(1:kXval, length.out=nrow(data)))
+      print(paste0('progress check, iTry: ', iTry))
+      measures <- NULL
+        for ( kFold in 1:kXval ) {
+          print(paste0('progress check, kFold: ', kFold))
+          train = data[xvalFolds!=kFold,]
+          test = data[xvalFolds==kFold,]
+          # fit with the "best" parameter values determined by tune.svm and passed in
+          svm_fit = svm(y_income~., data=train, kernel='radial', 
+                        coef0=best_coef0, degree=best_degree, cost=best_cost, gamma=best_gamma)
+
+          test_predict = predict(svm_fit, newdata=test)
+          test_pred_num=ifelse(test_predict == '>50K', 1, 0)
+          test_y_income_num = ifelse(test$y_income == '>50K', 1, 0)
+
+          test_assessment_measures = assess_prediction(test_y_income_num, 
+                                                     test_pred_num, 
+                                                     print_results=TRUE)
+        
+        # accumulate test measurements over all cross-validation folds:
+        measures = rbind(measures, cbind(test_assessment_measures$accuracy_pct,
+                                         test_assessment_measures$sensitivity_pct,
+                                         test_assessment_measures$specificity_pct))
+        }
+
+          #print(measures)
+          measure_means = colMeans(measures)
+          #print(measure_means)
+          retRes = rbind(retRes,
+                          data.frame(sim=iTry, 
+                                     accuracy_pct=measure_means[1],
+                                     sensitivity_pct=measure_means[2],
+                                     specificity_pct=measure_means[3]))
+          
+  }
+  retRes
+}
+ 
+number_of_folds = 3
+number_of_tries = 2
+df_out_svm_tuned = xvalCensusIncomeSvm(svm_data, coef0=best_coef0, degree=best_degree,
+                                   cost=best_cost, gamma=best_gamma,
+                                   nTries=number_of_tries, kXval=number_of_folds)
+
+```
+
+
+Average performance measures for SVM coef0=`r best_coef0`, degree=`r best_degree`, cost=`r best_cost`, gamma=`r best_gamma`:
+
+* accuracy: `r round(mean(df_out_svm_tuned$accuracy_pct),2)`%  
+* sensitivity: `r round(mean(df_out_svm_tuned$sensitivity_pct),2)`%  
+* specificity: `r round(mean(df_out_svm_tuned$specificity_pct),2)`% 
+
+
+```{r fig.width=9, fig.height=6, echo=FALSE}
+# easier to change the results than to change the underlying data population methods
+df_svm_tuned_melted = melt(df_out_svm_tuned, id.vars=c('sim'))
+
+p = ggplot(df_svm_tuned_melted, aes(x=variable, y=value, colour=variable)) + geom_boxplot() 
+title = sprintf('Performance measures, SVM with radial kernel, %d-fold cross validation
+- coef0=%d, degree=%d, cost=%d, gamma=%f', number_of_folds, best_coef0, best_degree, best_cost, best_gamma)
+p + ggtitle(title) + xlab("measure type") + ylab("measure value %")
+
+```
+
+
+> and compare to the performance of other methods reported in the dataset description.
+
+I can only comment in general about the numbers - notwithstanding any warnings about computational demands I've needed to downsample the data significantly so that I can complete multiple iterations of different configurations in a reasonable amount of time. So while I hope to increase the number of observations submitted regarding SVM for the final final as it were right now I can only say that with `tune` performed on 50% of the dataset and only 40% of the data sent to `xvalCensusIncomeSvm` for 3-fold cross validation, the numbers are still quite good, 14.63% error rate, putting it in in 5th place among the dataset-supplied numbers, right after "IDTM (Decision table)".  
+
+The final error rate, supplied via variable = `round(100-mean(df_out_svm_tuned$accuracy_pct),2)` is: `r round(100-mean(df_out_svm_tuned$accuracy_pct),2)`%.
+
+
+# Problem 5: compare logistic regression, random forest and SVM model performance (5 points)
+
+Compare performance of the models developed above (logistic regression, random forest, SVM) in terms of their accuracy, error and sensitivity/specificity.  Comment on differences and similarities between them.
+
+---
+
+> Compare performance of the models developed above (logistic regression, random forest, SVM) in terms of their accuracy, error and sensitivity/specificity. 
+
+A table presenting the results from each of those, accuracy (as opposed to error rate) is here:
+
+<table style="width:60%">
+  <tr><th align="left">measure</th><th align="left">LogReg</th><th align="left">RandomForest</th><th align="left">SVM (radial)</th></tr>
+  <tr>
+    <td>accuracy</td><td>`r round(mean(df_out$accuracy_pct),2)`%</td>
+  	<td>`r round(mean(df_out_rf$accuracy_pct),2)`%</td>
+  	<td>`r round(mean(df_out_svm_tuned$accuracy_pct),2)`%</td>
+  </tr>	
+  <tr>
+    <td>sensitivity</td>
+  	<td>`r round(mean(df_out$sensitivity_pct),2)`%</td>
+  	<td>`r round(mean(df_out_rf$sensitivity_pct),2)`%</td>
+  	<td>`r round(mean(df_out_svm_tuned$sensitivity_pct),2)`%</td>
+  </tr>
+  <tr>
+    <td>specificity</td>
+  	<td>`r round(mean(df_out$specificity_pct),2)`%</td>
+  	<td>`r round(mean(df_out_rf$specificity_pct),2)`%</td>
+  	<td>`r round(mean(df_out_svm_tuned$specificity_pct),2)`%</td>
+  </tr>
+</table>
+</br>
+
+
+> Comment on differences and similarities between them.
+
+The similarities are more striking than any differences. Obviously* the random forest had the lowest erorr rate but the almost-as-good showings of SVM with radial kernel and logistic regression models indicate that at least I didn't make any major mistakes in model configuration or data prep (or made the same mistake consistently I guess).  
+   * It is also quite possible the final SVM, with more training data, will return better accuracy vs. the values I'm basing my current words on.  
+Both sensitivity and specificity share similar rates across the models, with a high specificity but a notably low sensitivity - indicating many >50K observations are being incorrectly classified as low-income. That being said, random forest is a solid step above the other two in this regard, returning a sensitivity a few percent higher than both logistic regression and the radial SVM.
+
+
+# Extra 10 points: KNN model
+
+Develop KNN model for this data, evaluate its performance for different values of $k$ on different splits of the data into training and test and compare it to the performance of other methods reported in the dataset description.  Notice that this dataset includes many categorical variables as well as continuous attributes measured on different scales, so that the distance has to be defined to be meaningful (probably avoiding subtraction of the numerical values of multi-level factors directly or adding differences between untransformed age and capital gain/loss attributes).
+
+# Extra 15 points: variable importance in SVM
+
+SVM does not appear to provide readily available tools for judging relative importance of different attributes in the model.  Please evaluate here an approach similar to that employed by random forest where importance of any given attribute is measured by the decrease in model performance upon randomization of the values for this attribute.
+
+
+# An afterword on the computational demands of the final exam
+
+Because during previous offerings of this course there were always several posts on piazza regarding how long it takes to fit various classifiers to the census income dataset we have added this note here.
+
+First of all, we most definitely do *not* expect you to *have* to buy capacity from AWS to complete this assignment. You certainly can if you want to, but this course is not about that and census income is really not *that* big of a dataset to require it. Something reasonable/useful can be accomplished for this data with middle of the road hardware. For instance, knitting of the entire official solution for the final exam on 8Gb RAM machine with two i5-7200u cores takes under hour and a half using single-threaded R/Rstudio and this includes both extra points problems as well as various assessments of the performance of different models as function of data size and so on.
+
+Second, your solution should not take hours and hours to compile. If it does, it could be that it is attempting to do too much, or something is implemented inefficiently, or just plain incorrectly - it is impossible for us to comment on this until we see the code when we grade it. In general, it is often very prudent to "start small" -- fit your model on a random subset of data small enough for the model fitting call to return immediately, check how model performance (both in terms of error and time it takes to compute) scales with the size of the data you are training it on (as you increase it in size, say, two-fold several times), for tuning start with very coarse grid of parameter values and given those results decide what it right for you, etc.
+
+Lastly, making the decision about what is right for the problem at hand, how much is enough, etc. is inherent in this line of work. If you choose to conduct model tuning on a subset of the data - especially if you have some assessment of how the choice of tuning parameter and test error is affected by the size of training dataset - it could be a very wise choice.  If it is more efficient for you to knit each problem separately, by all means feel free to do that - just remember to submit each .Rmd and HTML file that comprises your entire solution. On that note, if you end up using any of the unorthodox setups for your calculations (e.g. AWS, parallel processing, multiple machines, etc. - none of which are essential for solving it correctly) please be sure that when we grade we have every relevant piece of code available - we won't be able to grade your work if we are not clear about how the results were obtained.
+
+In the end, the final exam asks you to assess performance of three classification technologies on census income dataset and compare that to the results already reported for it. It is very much up to you how exactly you want to go about it.  There could be many versions of correct and informative solution for that (as there could be just as many if not more that are completely wrong).
+
+As always, best of luck - we are practically done here!

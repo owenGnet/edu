@@ -1,0 +1,121 @@
+﻿<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8'>
+    <title>Lecture 11 Problem 1</title>
+    <script type='text/javascript' src='d3/d3.js'></script>
+    <link href="lec11_p1.css" rel="stylesheet" type='text/css' />
+</head>
+<body>
+    <script type='text/javascript'>
+        d3.csv('../lec11_p1.csv', function (d) {
+            return d;
+        }, function (data) {
+
+            var width = 1150, height = 555,
+                    margin = { top: 20, right: 20, bottom: 20, left: 70 };
+            //uncomment below for scaled-down version, easier to work with on smaller screen
+            //width = 750; height = 400;
+
+            //horizontal/GDP scale
+            var xMin = 50, xMax=500;
+             var xScale = d3.scale.linear()
+                 .domain([xMin, xMax])
+                 .range([50, width]);
+
+             var yScale = d3.scale.linear()
+                .domain([25, 250])
+                .range([height,40])
+
+             var xAxis = d3.svg.axis().scale(xScale).orient('bottom')
+                    .tickValues([100,200,300,400,500]);
+
+             var yAxis = d3.svg.axis().scale(yScale).orient('left')
+                    .tickValues([50, 100, 150, 200, 250]);
+
+            var svg = d3.select('body').append('svg')
+                .attr('width', width + margin.right + margin.left)
+                .attr('height', height + margin.top + margin.bottom)
+                .attr('class', 'frame');
+
+            svg.append("text").attr("x", 25).attr("y", 30)
+                .text("Displacement").attr('class', 'axis-label');
+            svg.append("text").attr("x", 45).attr("y", height + 35)
+                .text("Horsepower").attr('class', 'axis-label');
+
+            //legend
+            svg.append("rect").attr("x", 80).attr("y", 80)
+                .attr("height", 50).attr("width",100).attr('class', 'legend');
+            svg.append("text").attr("x", 100).attr("y", 100)
+                .text("Actual").attr('class', 'axis-label');
+            svg.append("text").attr("x", 100).attr("y", 120)
+                .text("Predicted").attr('class', 'axis-label');
+            svg.append("circle").attr("cx", 90).attr("cy", 95)
+                .attr('r', 5).attr('class', 'actual');
+            svg.append("circle").attr("cx", 90).attr("cy", 115)
+                .attr('r', 5).attr('class', 'predicted');
+
+            var dot_actual = svg.selectAll('circle-actual')
+                .data(data).enter().append('circle')
+                .attr('class', function (d) {
+                    return 'actual';
+                });
+
+            dot_actual.attr('cx', function (d) {
+                return xScale(d.displacement);
+            })
+             .attr('cy', function (d) {
+                 return yScale(d.actual);
+             })
+             .attr('r', function (d) {
+                 return 5;
+             })
+            .append('title')
+            .text(function (d) {
+                return Math.round(d.displacement) + ' displacement, actual hp: ' + Math.round(d.actual);
+            });
+
+            var dot_pred = svg.selectAll('circle-predicted')
+                .data(data).enter().append('circle')
+                .attr('class', function (d) {
+                    return 'predicted';
+                });
+
+            dot_pred.attr('cx', function (d) {
+                return xScale(d.displacement);
+            })
+             .attr('cy', function (d) {
+                 return yScale(d.predicted);
+             })
+             .attr('r', function (d) {
+                 return 5;
+             })
+            .append('title')
+            .text(function (d) {
+                return  Math.round(d.displacement) + ' displacement, predicted hp: ' + Math.round(d.predicted);
+            });
+
+            //some quick & dirty algebra gave me a slope = 0.49
+            //linear_model.weights = [0.491718981427]
+            var model_weights = 0.491718981427;
+            svg.append("line").attr("x1", xScale(xMin)).attr("y1", yScale(xMin * model_weights))
+                .attr("x2", xScale(xMax)).attr("y2", yScale(xMax * model_weights))
+                .attr('class', 'model');
+            
+            //keep these at end
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(0,' + height + ')')
+                .call(xAxis);
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(50,0)')
+                .call(yAxis);
+
+        });
+
+    </script>
+
+</body>
+</html>

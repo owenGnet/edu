@@ -1,0 +1,39 @@
+
+/*simple border for the main graphic*/
+.frame {
+    border: 1px solid black;
+    padding: 20px 20px;
+}
+
+/*set stroke and fill for each area/continent to correct color
+    removing stroke lines will leave a light border between 
+    country pie slices.
+*/
+path.europe {
+    stroke: #FCEA32;
+    fill: #FCEA32; /*yellow*/
+}
+path.africa  {    
+    stroke: #30DCEC;
+    fill: #30DCEC; /*blue*/
+}
+path.asia {
+    stroke: #FC788D;
+    fill: #FC788D; /*red*/
+}
+path.america {
+    stroke: #95EE32;
+    fill: #95EE32; /*green*/
+}
+/*keep after the standard path CSS definitions for the mouseover/out
+    behavior to work correctly. Preferably make the CSS selector
+    more precisely pathed to avoid dependency...but not tonight.
+*/
+path.selected-path {
+    stroke: thistle;
+    fill: thistle; /*light purple*/
+}
+
+
+
+

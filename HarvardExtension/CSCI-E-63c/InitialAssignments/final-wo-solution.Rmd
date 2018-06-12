@@ -1,0 +1,69 @@
+---
+title: 'CSCI E-63C: Final Exam'
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preface
+
+For the final exam/project we will develop classification models using several approaches and compare their performance on a new dataset -- so-called "Census Income" from UCI ML.  It is available at UCI ML web site, but so that we are not at the mercy of UCI ML availability, there is also a local copy of it in our website in Canvas as a zip-archive of all associated files.  Among other things, the description for this dataset also presents performance (prediction accuracy) observed by the dataset providers using variety of modeling techniques -- this supplies a context for the errors of the models we will develop here.
+
+Please note that the original data has been split up into training and test subsets, but there doesn't seem to be anything particular about that split, so we might want to pool those two datasets together and split them into training and test as necessary ourselves. As you do that, please check that the attribute levels are consistent between those two files.  For instance, the categorized income levels are indicated using slightly different notation in their training and test data.   By now it should be quite straightforward for you to correct that when you pool them together.
+
+Also, please note that there is non-negligible number of rows with missing values that for most analyses cannot be included without modification in the computation.  Please decide how you want to handle them and proceed accordingly.  The simplest and perfectly acceptable approach would be to exclude those observations from the rest of the analyses, but if you have time and inclination to investigate the impact of imputing them by various means, you are welcome to try.
+
+Attribute called "final weight" in the dataset description represents demographic weighting of these observations.  Please disregard it for the purposes of this assignment.
+
+Additionally, several attributes in this dataset are categorical variables with more than two levels (e.g. native country, occupation, etc.).  Please make sure to translate them into corresponding sets of dummy indicator variables for the methods that require such conversion (e.g. PCA) -- R function `model.matrix` can be convenient for this, instead of generating those 0/1 indicators for each level of the factor manually (which is still perfectly fine).  Some of those multi-level factors contain very sparsely populated categories -- e.g. occupation "Armed-Forces" or work class "Never-worked" -- it is your call whether you want to keep those observations in the data or exclude also on the basis that there is not enough data to adequately capture the impact of those categories. Feel free to experiment away!
+
+Among the multi-level categorical attributes, native country attribute has the largest number of levels -- several folds higher than any other attribute in this dataset -- some of which have relatively few observations.  This associated increase in dimensionality of the data may not be accompanied by a corresponding gain of resolution -- e.g. would we expect this data to support the *difference* in income between descendants from Peru and Nicaragua, for example, or from Cambodia and Laos?  Please feel free to evaluate the impact of inclusion and/or omission of this attribute in/from the model and/or discretizing it differently (e.g. US/non-US, etc.).
+
+Lastly, the size of this dataset can make some of the modeling techniques run slower than what we were typically encountering in this class.  You may find it helpful to do some of the exploration and model tuning on multiple random samples of smaller size as you decide on useful ranges of parameters/modeling choices, and then only perform a final run of fully debugged and working code on the full dataset.  Please see also the afterword below on the computational demands of this problem set.
+
+# Problem 1: univariate and unsupervised analysis (20 points)
+
+Download and read "Census Income" data into R and prepare graphical and numerical summaries of it: e.g. histograms of continuous attributes, contingency tables of categorical variables, scatterplots of continuous attributes with some of the categorical variables indicated by color/symbol shape, etc.  Perform principal components analysis of this data (do you need to scale it prior to that? how would you represent multilevel categorical attributes to be used as inputs for PCA?) and plot observations in the space of the first few principal components with subjects' gender and/or categorized income indicated by color/shape of the symbol.  Perform univariate assessment of associations between outcome we will be modeling and each of the attributes (e.g. t-test or logistic regression for continuous attributes, contingency tables/Fisher exact test/$\chi^2$ test for categorical attributes).  Summarize your observations from these assessments: does it appear that there is association between outcome and predictors? Which predictors seem to be more/less relevant?
+
+# Problem 2: logistic regression (25 points)
+
+Develop logistic regression model of the outcome as a function of multiple predictors in the model.  Which variables are significantly associated with the outcome?  Test model performance on multiple splits of data into training and test subsets, summarize it in terms of accuracy/error, sensitivity/specificity and compare to the performance of other methods reported in the dataset description.
+
+# Problem 3: random forest (25 points)
+
+Develop random forest model of the categorized income. Present variable importance plots and comment on relative importance of different attributes in the model.  Did attributes showing up as more important in random forest model also appear as significantly associated with the outcome by logistic regression?  Test model performance on multiple splits of data into training and test subsets, compare test and out-of-bag error estimates, summarize model performance in terms of accuracy/error, sensitivity/specificity and compare to the performance of other methods reported in the dataset description.
+
+# Problem 4: SVM (25 points)
+
+Develop SVM model of this data choosing parameters (e.g. choice of kernel, cost, etc.) that appear to yield better performance.  Test model performance on multiple splits of data into training and test subsets, summarize model performance in terms of accuracy/error, sensitivity/specificity and compare to the performance of other methods reported in the dataset description.
+
+# Problem 5: compare logistic regression, random forest and SVM model performance (5 points)
+
+Compare performance of the models developed above (logistic regression, random forest, SVM) in terms of their accuracy, error and sensitivity/specificity.  Comment on differences and similarities between them.
+
+# Extra 10 points: KNN model
+
+Develop KNN model for this data, evaluate its performance for different values of $k$ on different splits of the data into training and test and compare it to the performance of other methods reported in the dataset description.  Notice that this dataset includes many categorical variables as well as continuous attributes measured on different scales, so that the distance has to be defined to be meaningful (probably avoiding subtraction of the numerical values of multi-level factors directly or adding differences between untransformed age and capital gain/loss attributes).
+
+# Extra 15 points: variable importance in SVM
+
+SVM does not appear to provide readily available tools for judging relative importance of different attributes in the model.  Please evaluate here an approach similar to that employed by random forest where importance of any given attribute is measured by the decrease in model performance upon randomization of the values for this attribute.
+
+
+# An afterword on the computational demands of the final exam
+
+Because during previous offerings of this course there were always several posts on piazza regarding how long it takes to fit various classifiers to the census income dataset we have added this note here.
+
+First of all, we most definitely do *not* expect you to *have* to buy capacity from AWS to complete this assignment. You certainly can if you want to, but this course is not about that and census income is really not *that* big of a dataset to require it. Something reasonable/useful can be accomplished for this data with middle of the road hardware. For instance, knitting of the entire official solution for the final exam on 8Gb RAM machine with two i5-7200u cores takes under hour and a half using single-threaded R/Rstudio and this includes both extra points problems as well as various assessments of the performance of different models as function of data size and so on.
+
+Second, your solution should not take hours and hours to compile. If it does, it could be that it is attempting to do too much, or something is implemented inefficiently, or just plain incorrectly - it is impossible for us to comment on this until we see the code when we grade it. In general, it is often very prudent to "start small" -- fit your model on a random subset of data small enough for the model fitting call to return immediately, check how model performance (both in terms of error and time it takes to compute) scales with the size of the data you are training it on (as you increase it in size, say, two-fold several times), for tuning start with very coarse grid of parameter values and given those results decide what it right for you, etc.
+
+Lastly, making the decision about what is right for the problem at hand, how much is enough, etc. is inherent in this line of work. If you choose to conduct model tuning on a subset of the data - especially if you have some assessment of how the choice of tuning parameter and test error is affected by the size of training dataset - it could be a very wise choice.  If it is more efficient for you to knit each problem separately, by all means feel free to do that - just remember to submit each .Rmd and HTML file that comprises your entire solution. On that note, if you end up using any of the unorthodox setups for your calculations (e.g. AWS, parallel processing, multiple machines, etc. - none of which are essential for solving it correctly) please be sure that when we grade we have every relevant piece of code available - we won't be able to grade your work if we are not clear about how the results were obtained.
+
+In the end, the final exam asks you to assess performance of three classification technologies on census income dataset and compare that to the results already reported for it. It is very much up to you how exactly you want to go about it.  There could be many versions of correct and informative solution for that (as there could be just as many if not more that are completely wrong).
+
+As always, best of luck - we are practically done here!

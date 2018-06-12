@@ -1,0 +1,121 @@
+-- Problem 1 
+
+CREATE TABLE KingJames (freq INT, word STRING) 
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' 
+STORED AS TEXTFILE;
+
+SHOW TABLES
+
+DESCRIBE KingJames
+
+LOAD DATA INPATH '/user/cloudera/bible_freq' INTO TABLE KingJames; 
+
+SELECT * FROM KingJames SORT BY freq LIMIT 10;
+
+-- 2)	Tell us all words in table KINGJAMES which start with letter “w” and are 4 or more characters long and appear more than 250
+SELECT * FROM KingJames
+WHERE LOWER(word) LIKE 'w%' 
+	AND LENGTH(word) >= 4
+	AND freq > 250
+
+Problem 2 
+
+CREATE TABLE Shake (freq INT, word STRING) 
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' 
+STORED AS TEXTFILE;
+
+DESCRIBE Shake
+
+LOAD DATA INPATH '/user/cloudera/shake_freq' INTO TABLE Shake; 
+
+SELECT * FROM Shake SORT BY freq LIMIT 10;
+
+CREATE TABLE merged (shakeWord STRING, shakeFreq INT, bibleWord STRING, bibleFreq INT); 
+
+INSERT OVERWRITE TABLE merged
+SELECT s.word, s.freq, k.word, k.freq 
+FROM Shake s 
+FULL OUTER JOIN KingJames k ON (k.word = s.word) 
+
+-- 3)	Tell us how many words appear in table SHAKE but not in KINGJAMES and how many appear in KINGJAMES and not in SHAKE.
+-- words in Shake but not KingJames
+SELECT COUNT(*) AS NumWordsInShakeButNotBible
+FROM merged 
+WHERE shakeFreq IS NOT NULL AND bibleFreq IS NULL
+
+-- words in KingJames but not Shake
+SELECT COUNT(*) AS NumWordsInBibleButNotShake
+FROM merged 
+WHERE bibleFreq IS NOT NULL AND shakeFreq IS NULL
+
+-- 4)	Select 10 words from each group for us. 
+SELECT shakeWord, shakeFreq
+FROM merged 
+WHERE shakeFreq IS NOT NULL AND bibleFreq IS NULL
+ORDER BY RAND()
+LIMIT 10;
+
+SELECT bibleWord, bibleFreq
+FROM merged 
+WHERE bibleFreq IS NOT NULL AND shakeFreq IS NULL
+ORDER BY RAND()
+LIMIT 10;
+
+
+-- Problem 3 
+-- Hive
+SELECT COUNT(*) AS NumWordsInBibleAndShake
+FROM merged 
+WHERE bibleFreq IS NOT NULL AND shakeFreq IS NOT NULL
+
+SELECT COUNT(*) AS NumWordsInShakeButNotBible
+FROM merged 
+WHERE shakeFreq IS NOT NULL AND bibleFreq IS NULL
+
+SELECT COUNT(*) AS NumWordsInBibleButNotShake
+FROM merged 
+WHERE bibleFreq IS NOT NULL AND shakeFreq IS NULL
+
+-- Impala
+INVALIDATE METADATA;
+
+SHOW TABLES;
+
+SELECT COUNT(*) AS NumWordsInBibleAndShake
+FROM merged 
+WHERE bibleFreq IS NOT NULL AND shakeFreq IS NOT NULL
+
+SELECT COUNT(*) AS NumWordsInShakeButNotBible
+FROM merged 
+WHERE shakeFreq IS NOT NULL AND bibleFreq IS NULL
+
+SELECT COUNT(*) AS NumWordsInBibleButNotShake
+FROM merged 
+WHERE bibleFreq IS NOT NULL AND shakeFreq IS NULL
+
+-- Problem 4
+
+CREATE TABLE apachelog (
+	host STRING, 
+	identity STRING, 
+	user STRING, 
+	time STRING, 
+	request STRING, 
+	status STRING, 
+	size STRING, 
+	referer STRING, 
+	agent STRING) 
+ROW FORMAT SERDE 'org.apache.hadoop.hive.contrib.serde2.RegexSerDe' 
+	WITH SERDEPROPERTIES ( 'input.regex' = '([^ ]*) ([^ ]*) ([^ ]*) (-|\\[[^\\]]*\\]) ([^ \"]*|\"[^\"]*\") (-|[0-9]*) (-|[0-9]*)(?: ([^ \"]*|\"[^\"]*\") ([^ \"]*|\"[^\"]*\"))?', 		'output.format.string' = '%1$s %2$s %3$s %4$s %5$s %6$s %7$s %8$s %9$s' ) 
+	STORED AS TEXTFILE;
+
+LOAD DATA LOCAL INPATH '/home/cloudera/apache.access.log' INTO TABLE ApacheLog;
+LOAD DATA LOCAL INPATH '/home/cloudera/apache.access.2.log' INTO TABLE ApacheLog;
+
+SELECT * FROM ApacheLog;
+
+LOAD DATA LOCAL INPATH '/home/cloudera/access_log_1.txt' INTO TABLE ApacheLog;
+
+SELECT COUNT(*) FROM ApacheLog;
+
+SELECT * FROM ApacheLog LIMIT 10;
