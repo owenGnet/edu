@@ -1,7 +1,10 @@
 ![Harvard Extension School logo](http://owenG.net/images/HarvardExtension.png "Logo Title Text 1")
 
+## [Data Science Certificate](http://owenG.net/images/DataScienceCertificate.pdf "Certificate"), January 2018
 
-CSCI E-63C: Elements of Data Science and Statistical Learning with R
+
+
+[CSCI E-63C](CSCI-E-63c): Elements of Data Science and Statistical Learning with R
 ----
 **Spring Term 2018**  
 _Andrey Sivachenko, PhD, Victor A. Farutin, PhD_
@@ -17,7 +20,7 @@ machines, and decision trees. The datasets used in the examples are drawn from d
 and customer sales and survey data._
 
 
-CSCI E-88: Principles of Big Data Processing
+[CSCI E-88](CSCI_E-88): Principles of Big Data Processing
 -----
 **Fall Term 2017**  
 _Marina Yu Popova_ 
@@ -37,7 +40,7 @@ Final project, [stream data -> Kafka -> Vertica (perform in-database modeling/ma
 ([zipped code](http://oweng.net/CSCI-E-88/project/Galvin_OwenFinalProject.zip))
 
 
-CSCI E-109A: Introduction to Data Science
+[CSCI E-109A](CSCI-E-109a): Introduction to Data Science
 -----
 **Fall Term 2016**  
 _Pavlos Protopapas, Weiwei Pan, Kevin A. Rader_  
@@ -53,7 +56,7 @@ thinking, logistic regression, random forests, SVM
 Final project, two person team, [Lending Club Data Analysis and Default Rate Prediction](http://owenG.net/LendingClub/index.html)
 
 
-CSCI E-63: Big Data Analytics 
+[CSCI E-63](CSCI-E-63): Big Data Analytics
 -----
 **Spring Term 2016**  
 _Zoran B. Djordjevic_  
@@ -77,7 +80,7 @@ Assignments covering Hadoop, MapReduce, Spark, Kafka, Hive, NoSQL (Cassandra), N
 Final project, [Machine Learning with H2O.ai focusing on Simple and Multiple Linear Regression](http://oweng.net/CSCI-E-63/project/H2Oai_OwenGalvin_Report.docx)
 ([zipped code](http://oweng.net/CSCI-E-63/project/FinalProject_GalvinOwen.zip))
 
-STAT E-100: Introduction to Quantitative Methods for the Social Sciences and Humanities
+[STAT E-100](STAT-E-100): Introduction to Quantitative Methods for the Social Sciences and Humanities
 -----
 **Fall Term 2015**  
 _Ethan Fosse_  
